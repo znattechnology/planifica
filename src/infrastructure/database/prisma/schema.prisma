@@ -1,0 +1,355 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  TEACHER
+  COORDINATOR
+  ADMIN
+}
+
+enum PlanType {
+  ANNUAL
+  TRIMESTER
+  BIWEEKLY
+  LESSON
+}
+
+enum PlanStatus {
+  DRAFT
+  GENERATING
+  GENERATED
+  REVIEWED
+  APPROVED
+}
+
+enum LessonStatus {
+  DRAFT
+  READY
+  DELIVERED
+  PARTIALLY_COMPLETED
+  NOT_COMPLETED
+}
+
+enum ActivityType {
+  LESSON_DELIVERED
+  ASSESSMENT_GIVEN
+  EXTRA_ACTIVITY
+  REMEDIAL_CLASS
+}
+
+enum ReportType {
+  TRIMESTER
+  ANNUAL
+}
+
+enum ReportStatus {
+  DRAFT
+  GENERATING
+  GENERATED
+  REVIEWED
+  FINALIZED
+}
+
+model User {
+  id                  String   @id @default(cuid())
+  email               String   @unique
+  name                String
+  password            String
+  emailVerified       Boolean  @default(false) @map("email_verified")
+  onboardingCompleted Boolean  @default(false) @map("onboarding_completed")
+  role                UserRole @default(TEACHER)
+  school              String?
+  subject             String?
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  teacherProfile     TeacherProfile?
+  schoolCalendars    SchoolCalendar[]
+  plans              Plan[]
+  dosificacoes       Dosificacao[]
+  lessons            Lesson[]
+  teachingActivities TeachingActivity[]
+  reports            Report[]
+
+  passwordResetTokens      PasswordResetToken[]
+  emailVerificationTokens  EmailVerificationToken[]
+  passwordChangeTokens     PasswordChangeToken[]
+
+  @@map("users")
+}
+
+model TeacherProfile {
+  id               String   @id @default(cuid())
+  userId           String   @unique @map("user_id")
+  schoolName       String   @map("school_name")
+  country          String   @default("Angola")
+  academicYear     String   @map("academic_year")
+  subjects         Json     // string[] — e.g. ["Matemática", "Física"]
+  classes          Json     // string[] — e.g. ["7ª classe", "8ª classe"]
+  numberOfClasses  Int      @map("number_of_classes")
+  teachingStyle    String?  @map("teaching_style")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("teacher_profiles")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@map("password_reset_tokens")
+}
+
+model EmailVerificationToken {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  code      String
+  expiresAt DateTime @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, code])
+  @@map("email_verification_tokens")
+}
+
+model PasswordChangeToken {
+  id              String    @id @default(cuid())
+  userId          String    @map("user_id")
+  code            String
+  newPasswordHash String    @map("new_password_hash")
+  expiresAt       DateTime  @map("expires_at")
+  usedAt          DateTime? @map("used_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, code])
+  @@map("password_change_tokens")
+}
+
+model Dosificacao {
+  id           String   @id @default(cuid())
+  userId       String   @map("user_id")
+  title        String
+  subject      String
+  grade        String
+  academicYear String   @map("academic_year")
+  content      Json
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plans Plan[]
+
+  @@map("dosificacoes")
+}
+
+model Plan {
+  id             String     @id @default(cuid())
+  userId         String     @map("user_id")
+  type           PlanType
+  title          String
+  subject        String
+  grade          String
+  academicYear   String     @map("academic_year")
+  trimester      Int?
+  weekIndex      Int?       @map("week_index")
+  content        Json
+  status         PlanStatus @default(DRAFT)
+  parentPlanId   String?    @map("parent_plan_id")
+  dosificacaoId  String     @map("dosificacao_id")
+  createdAt      DateTime   @default(now()) @map("created_at")
+  updatedAt      DateTime   @updatedAt @map("updated_at")
+
+  currentVersion       Int        @default(1) @map("current_version")
+  qualityScores        Json?      @map("quality_scores")
+  allowAutoAdjustments Boolean    @default(true) @map("allow_auto_adjustments")
+
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dosificacao Dosificacao   @relation(fields: [dosificacaoId], references: [id])
+  parentPlan  Plan?         @relation("PlanHierarchy", fields: [parentPlanId], references: [id])
+  childPlans  Plan[]        @relation("PlanHierarchy")
+  lessons     Lesson[]
+  versions    PlanVersion[]
+
+  @@index([dosificacaoId])
+  @@index([parentPlanId])
+  @@index([userId, type])
+  @@map("plans")
+}
+
+model PlanVersion {
+  id                String   @id @default(cuid())
+  planId            String   @map("plan_id")
+  version           Int
+  content           Json
+  changeDescription String   @map("change_description")
+  createdBy         String   @map("created_by")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  plan Plan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, version])
+  @@map("plan_versions")
+}
+
+model Lesson {
+  id             String       @id @default(cuid())
+  planId         String       @map("plan_id")
+  userId         String       @map("user_id")
+  title          String
+  date           DateTime
+  duration       Int
+  topic          String
+  content        Json
+  status         LessonStatus @default(DRAFT)
+  teacherNotes   String?      @map("teacher_notes")
+  actualDuration Int?         @map("actual_duration")
+  completedAt    DateTime?    @map("completed_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  plan               Plan               @relation(fields: [planId], references: [id], onDelete: Cascade)
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teachingActivities TeachingActivity[]
+
+  @@index([planId, status])
+  @@index([userId, status])
+  @@map("lessons")
+}
+
+model TeachingActivity {
+  id           String       @id @default(cuid())
+  userId       String       @map("user_id")
+  lessonId     String?      @map("lesson_id")
+  planId       String?      @map("plan_id")
+  type         ActivityType
+  subject      String
+  grade        String
+  topic        String
+  description  String
+  date         DateTime
+  duration     Int
+  studentCount Int?         @map("student_count")
+  notes        String?
+  outcomes     Json?        // string[]
+  challenges   Json?        // string[]
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lesson Lesson? @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+
+  @@index([planId])
+  @@index([userId, date])
+  @@index([userId, subject, date])
+  @@map("teaching_activities")
+}
+
+model Report {
+  id           String       @id @default(cuid())
+  userId       String       @map("user_id")
+  type         ReportType
+  title        String
+  subject      String
+  grade        String
+  academicYear String       @map("academic_year")
+  period       Json         // ReportPeriod
+  content      Json         // ReportContent
+  status       ReportStatus @default(DRAFT)
+  generatedAt  DateTime?    @map("generated_at")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+  @@index([userId, subject, academicYear])
+  @@map("reports")
+}
+
+// ─── School Calendar ────────────────────────────────────
+
+enum CalendarEventType {
+  NATIONAL_HOLIDAY
+  SCHOOL_HOLIDAY
+  TRIMESTER_BREAK
+  EXAM_PERIOD
+  MAKEUP_EXAM
+  PEDAGOGICAL_ACTIVITY
+  SCHOOL_EVENT
+  CUSTOM
+}
+
+model SchoolCalendar {
+  id           String   @id @default(cuid())
+  userId       String   @map("user_id")
+  academicYear String   @map("academic_year")
+  country      String   @default("Angola")
+  schoolName   String?  @map("school_name")
+  startDate    DateTime @map("start_date")
+  endDate      DateTime @map("end_date")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user   User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  terms  CalendarTerm[]
+  events CalendarEvent[]
+
+  @@unique([userId, academicYear])
+  @@map("school_calendars")
+}
+
+model CalendarTerm {
+  id             String   @id @default(cuid())
+  calendarId     String   @map("calendar_id")
+  name           String
+  trimester      Int      // 1, 2, or 3
+  startDate      DateTime @map("start_date")
+  endDate        DateTime @map("end_date")
+  teachingWeeks  Int      @map("teaching_weeks")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  calendar SchoolCalendar @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+
+  @@unique([calendarId, trimester])
+  @@map("calendar_terms")
+}
+
+model CalendarEvent {
+  id          String            @id @default(cuid())
+  calendarId  String            @map("calendar_id")
+  title       String
+  description String?
+  startDate   DateTime          @map("start_date")
+  endDate     DateTime          @map("end_date")
+  type        CalendarEventType
+  allDay      Boolean           @default(true) @map("all_day")
+  createdAt   DateTime          @default(now()) @map("created_at")
+
+  calendar SchoolCalendar @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+
+  @@index([calendarId, type])
+  @@index([calendarId, startDate])
+  @@map("calendar_events")
+}
