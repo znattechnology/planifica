@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
   try {
     const cutoff = new Date(Date.now() - STUCK_THRESHOLD_MS);
 
-    const stuckPlans = await prisma.plan.findMany({
+    const stuckPlans: { id: string }[] = await prisma.plan.findMany({
       where: {
         status: 'GENERATING',
         OR: [
@@ -32,9 +32,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ cleaned: 0, message: 'No stuck plans found' });
     }
 
+    const stuckPlanIds: string[] = stuckPlans.map(p => p.id);
+
     const result = await prisma.plan.updateMany({
       where: {
-        id: { in: stuckPlans.map((p: { id: string }) => p.id) },
+        id: { in: stuckPlanIds },
         status: 'GENERATING',
       },
       data: {
@@ -51,7 +53,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       cleaned: result.count,
-      planIds: stuckPlans.map(p => p.id),
+      planIds: stuckPlanIds,
       message: `${result.count} plano(s) preso(s) em GENERATING foram recuperados.`,
     });
   } catch (error) {
