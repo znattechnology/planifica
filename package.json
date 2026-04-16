@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "seed:demo": "npx tsx src/infrastructure/database/prisma/seed-demo.ts"
+    "seed:demo": "npx tsx src/infrastructure/database/prisma/seed-demo.ts",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

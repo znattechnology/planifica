@@ -1,4 +1,3 @@
-import { Prisma } from '@prisma/client';
 import { prisma } from '@/src/infrastructure/database/prisma/client';
 import { AuditLog, AuditLogMetadata, CreateAuditLogData } from '@/src/domain/entities/audit-log.entity';
 import { IAuditLogRepository } from '@/src/domain/interfaces/repositories/audit-log.repository';
@@ -27,6 +26,9 @@ function mapAuditLog(raw: {
   };
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyJson = any;
+
 export class PrismaAuditLogRepository implements IAuditLogRepository {
   async create(data: CreateAuditLogData): Promise<AuditLog> {
     const raw = await prisma.auditLog.create({
@@ -35,9 +37,9 @@ export class PrismaAuditLogRepository implements IAuditLogRepository {
         action: data.action,
         entityType: data.entityType,
         entityId: data.entityId,
-        before: data.before as Prisma.InputJsonValue,
-        after: data.after as Prisma.InputJsonValue,
-        metadata: data.metadata as Prisma.InputJsonValue ?? Prisma.JsonNull,
+        before: data.before as AnyJson,
+        after: data.after as AnyJson,
+        metadata: data.metadata !== undefined ? (data.metadata as AnyJson) : undefined,
       },
     });
     return mapAuditLog(raw);

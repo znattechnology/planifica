@@ -11,7 +11,6 @@ import {
 } from '@/src/domain/entities/subscription.entity';
 import { Payment, PaymentSource, PaymentStatus } from '@/src/domain/entities/payment.entity';
 import { ValidationError, EntityNotFoundError } from '@/src/domain/errors/domain.error';
-import { Prisma } from '@prisma/client';
 
 /** Payment data safe to expose to the frontend — confirmationCode is deliberately excluded. */
 export type PaymentSummary = Omit<Payment, 'confirmationCode'>;
@@ -89,8 +88,7 @@ export class UpgradeToPremiumUseCase {
           endDate,
         });
       } catch (err) {
-        const isUniqueViolation =
-          err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002';
+        const isUniqueViolation = typeof err === 'object' && err !== null && 'code' in err && (err as { code: unknown }).code === 'P2002';
         if (!isUniqueViolation) throw err;
 
         // Another concurrent request already created the subscription — re-fetch and return it
