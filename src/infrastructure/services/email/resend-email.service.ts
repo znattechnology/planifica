@@ -1,6 +1,12 @@
 import { Resend } from 'resend';
-import { IEmailService } from '@/src/domain/interfaces/services/email.service';
-import { passwordResetTemplate, welcomeTemplate, verificationCodeTemplate, passwordChangeCodeTemplate } from './templates';
+import { IEmailService, PaymentEmailData } from '@/src/domain/interfaces/services/email.service';
+import {
+  passwordResetTemplate,
+  welcomeTemplate,
+  verificationCodeTemplate,
+  passwordChangeCodeTemplate,
+  paymentReferenceTemplate,
+} from './templates';
 import { env } from '@/src/config/env.config';
 
 export class ResendEmailService implements IEmailService {
@@ -60,6 +66,17 @@ export class ResendEmailService implements IEmailService {
     if (error) {
       console.error('Resend error (password change code):', error);
       throw new Error('Falha ao enviar código de confirmação');
+    }
+  }
+
+  async sendPaymentReferenceEmail(to: string, name: string, data: PaymentEmailData): Promise<void> {
+    const { subject, html } = paymentReferenceTemplate(name, data.reference, data.amount, data.expiresAt, data.confirmationCode);
+
+    const { error } = await this.resend.emails.send({ from: this.from, to, subject, html });
+
+    if (error) {
+      console.error('Resend error (payment reference):', error);
+      throw new Error('Falha ao enviar referência de pagamento');
     }
   }
 

@@ -26,6 +26,8 @@ import { fetchWithAuth } from '@/src/shared/lib/fetch-with-auth'
 import { exportPlanoAnualToPDF } from '@/src/shared/utils/plano-anual-export'
 import { exportPlanoAnualToWord } from '@/src/shared/utils/plano-anual-word-export'
 import { exportPlanoAnualToExcel } from '@/src/shared/utils/plano-anual-excel-export'
+import { useUpgradeGuard } from '@/src/shared/hooks/use-upgrade-guard'
+import { PaymentModal } from '@/src/ui/components/subscription/payment-modal'
 
 interface PlanoAnualDetail {
   id: string
@@ -60,6 +62,7 @@ export default function PlanoAnualDetailPage() {
   const [plano, setPlano] = useState<PlanoAnualDetail | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const { guard, upgradeModal, closeUpgradeModal } = useUpgradeGuard()
 
   useEffect(() => {
     async function fetchPlano() {
@@ -170,7 +173,7 @@ export default function PlanoAnualDetailPage() {
               size="sm"
               variant="outline"
               className="border-border/60"
-              onClick={() => exportPlanoAnualToPDF(plano)}
+              onClick={guard(() => exportPlanoAnualToPDF(plano))}
             >
               <Download className="mr-1.5 h-3.5 w-3.5" />
               PDF
@@ -179,7 +182,7 @@ export default function PlanoAnualDetailPage() {
               size="sm"
               variant="outline"
               className="border-border/60"
-              onClick={() => exportPlanoAnualToWord(plano)}
+              onClick={guard(() => exportPlanoAnualToWord(plano))}
             >
               <Download className="mr-1.5 h-3.5 w-3.5" />
               Word
@@ -188,7 +191,7 @@ export default function PlanoAnualDetailPage() {
               size="sm"
               variant="outline"
               className="border-border/60"
-              onClick={() => exportPlanoAnualToExcel(plano)}
+              onClick={guard(() => exportPlanoAnualToExcel(plano))}
             >
               <Download className="mr-1.5 h-3.5 w-3.5" />
               Excel
@@ -388,6 +391,14 @@ export default function PlanoAnualDetailPage() {
           </Button>
         </div>
       </div>
+      {upgradeModal && (
+        <PaymentModal
+          reference={upgradeModal.reference}
+          amount={upgradeModal.amount}
+          expiresAt={upgradeModal.expiresAt}
+          onClose={closeUpgradeModal}
+        />
+      )}
     </div>
   )
 }

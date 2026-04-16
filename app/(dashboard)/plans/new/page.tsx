@@ -24,6 +24,8 @@ import { Badge } from '@/src/ui/components/ui/badge'
 import { FormAlert } from '@/src/ui/components/ui/form-error'
 import { ROUTES, API_ROUTES } from '@/src/shared/constants/routes.constants'
 import { fetchWithAuth } from '@/src/shared/lib/fetch-with-auth'
+import { useSubscription } from '@/src/ui/providers/subscription-provider'
+import { ArrowUpCircle } from 'lucide-react'
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -83,6 +85,7 @@ const PLAN_TYPES: { value: PlanType; label: string; description: string; icon: t
 
 export default function NewPlanPage() {
   const router = useRouter()
+  const { usage } = useSubscription()
   const [step, setStep] = useState(1)
   const [error, setError] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
@@ -162,8 +165,21 @@ export default function NewPlanPage() {
   const canProceedStep2 = needsDosificacao ? !!selectedDosificacao : !!selectedParentPlan
   const canProceedStep3 = !!title
 
+  // Derived state: is user at the free plan limit?
+  const isAtLimit =
+    usage?.plan === 'FREE' &&
+    typeof usage.remaining === 'number' &&
+    usage.remaining <= 0
+
   async function handleGenerate() {
     setError('')
+
+    // Guard: FREE plan limit reached
+    if (isAtLimit) {
+      setError('Atingiu o limite de 5 planos mensais do plano gratuito. Faça upgrade para Premium para continuar.')
+      return
+    }
+
     setIsGenerating(true)
     try {
       const payload: Record<string, unknown> = {
@@ -505,6 +521,34 @@ export default function NewPlanPage() {
             </div>
           </div>
 
+          {/* Usage gate banner (FREE limit reached) */}
+          {isAtLimit && (
+            <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 space-y-3">
+              <div className="flex items-start gap-3">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-destructive/10">
+                  <Sparkles className="h-4 w-4 text-destructive" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-destructive">Limite mensal atingido</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Usou os {usage?.plansLimit} planos gratuitos deste mês.
+                    Faça upgrade para gerar planos ilimitados.
+                  </p>
+                </div>
+              </div>
+              <Button
+                className="w-full bg-accent text-accent-foreground hover:bg-accent/90"
+                size="sm"
+                asChild
+              >
+                <Link href={ROUTES.DASHBOARD}>
+                  <ArrowUpCircle className="mr-2 h-3.5 w-3.5" />
+                  Upgrade para Premium
+                </Link>
+              </Button>
+            </div>
+          )}
+
           <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
             <Button variant="outline" onClick={() => setStep(2)}>
               <ArrowLeft className="mr-2 h-4 w-4" />
@@ -512,7 +556,7 @@ export default function NewPlanPage() {
             </Button>
             <Button
               onClick={handleGenerate}
-              disabled={!canProceedStep3 || isGenerating}
+              disabled={!canProceedStep3 || isGenerating || isAtLimit}
               className="bg-accent text-accent-foreground hover:bg-accent/90"
             >
               {isGenerating ? (
@@ -524,6 +568,11 @@ export default function NewPlanPage() {
                 <>
                   <Sparkles className="mr-2 h-4 w-4" />
                   Gerar Plano com IA
+                  {usage?.plan === 'FREE' && typeof usage.remaining === 'number' && !isAtLimit && (
+                    <span className="ml-2 rounded-full bg-accent-foreground/20 px-1.5 py-0.5 text-[10px]">
+                      {usage.remaining} restantes
+                    </span>
+                  )}
                 </>
               )}
             </Button>

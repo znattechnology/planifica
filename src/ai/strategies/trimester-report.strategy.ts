@@ -82,10 +82,26 @@ export class TrimesterReportStrategy implements IReportGenerationStrategy {
   }
 
   parseResponse(raw: string): ReportContent {
-    const parsed = reportResponseSchema.parse(JSON.parse(raw));
-    return {
-      ...parsed,
-      rawAIOutput: raw,
-    };
+    try {
+      const parsed = reportResponseSchema.parse(JSON.parse(raw));
+      return {
+        ...parsed,
+        rawAIOutput: raw,
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+      return {
+        summary: '',
+        objectivesAchieved: [],
+        topicsCovered: [],
+        studentPerformance: '',
+        methodology: '',
+        challenges: [],
+        recommendations: [],
+        statistics: { totalLessonsDelivered: 0, totalHoursWorked: 0, totalTopicsCovered: 0, plannedVsDelivered: 0 },
+        criticalNotes: `Erro ao processar resposta da IA: ${errorMessage.substring(0, 500)}`,
+        rawAIOutput: raw,
+      } as ReportContent;
+    }
   }
 }

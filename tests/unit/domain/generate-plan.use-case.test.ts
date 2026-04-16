@@ -2,12 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { GeneratePlanUseCase } from '@/src/domain/use-cases/plan/generate-plan.use-case';
 import { PlanType, PlanStatus } from '@/src/domain/entities/plan.entity';
 import { EntityNotFoundError } from '@/src/domain/errors/domain.error';
+import { CalendarResolutionService } from '@/src/domain/services/calendar-resolution.service';
 import type { IPlanRepository } from '@/src/domain/interfaces/repositories/plan.repository';
 import type { IDosificacaoRepository } from '@/src/domain/interfaces/repositories/dosificacao.repository';
 import type { IAIPlanGeneratorService } from '@/src/domain/interfaces/services/ai-plan-generator.service';
 import type { ISchoolCalendarRepository } from '@/src/domain/interfaces/repositories/school-calendar.repository';
 import type { ILessonRepository } from '@/src/domain/interfaces/repositories/lesson.repository';
 import type { ITeachingActivityRepository } from '@/src/domain/interfaces/repositories/teaching-activity.repository';
+import type { IUserRepository } from '@/src/domain/interfaces/repositories/user.repository';
 
 const mockDosificacao = {
   id: 'dos-1',
@@ -75,9 +77,14 @@ function createMocks() {
   };
 
   const schoolCalendarRepository: ISchoolCalendarRepository = {
+    findById: vi.fn().mockResolvedValue(null),
     findByUserAndYear: vi.fn().mockResolvedValue(null),
+    findActiveMinisterial: vi.fn().mockResolvedValue(null),
+    findBySchoolAndYear: vi.fn().mockResolvedValue(null),
+    findByType: vi.fn().mockResolvedValue([]),
     findAllByUser: vi.fn(),
     create: vi.fn(),
+    update: vi.fn(),
     addEvent: vi.fn(),
     removeEvent: vi.fn(),
     delete: vi.fn(),
@@ -105,7 +112,20 @@ function createMocks() {
     delete: vi.fn(),
   };
 
-  return { planRepository, dosificacaoRepository, aiService, schoolCalendarRepository, lessonRepository, activityRepository };
+  const userRepository: IUserRepository = {
+    findById: vi.fn().mockResolvedValue(null),
+    findByEmail: vi.fn(),
+    findByEmailWithPassword: vi.fn(),
+    findByIdWithPassword: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    findAll: vi.fn(),
+    findBySchool: vi.fn(),
+    countByRole: vi.fn(),
+  };
+
+  return { planRepository, dosificacaoRepository, aiService, schoolCalendarRepository, lessonRepository, activityRepository, userRepository };
 }
 
 describe('GeneratePlanUseCase', () => {
@@ -114,6 +134,10 @@ describe('GeneratePlanUseCase', () => {
 
   beforeEach(() => {
     mocks = createMocks();
+    const calendarResolution = new CalendarResolutionService(
+      mocks.schoolCalendarRepository,
+      mocks.userRepository,
+    );
     useCase = new GeneratePlanUseCase(
       mocks.planRepository,
       mocks.dosificacaoRepository,
@@ -121,6 +145,7 @@ describe('GeneratePlanUseCase', () => {
       mocks.schoolCalendarRepository,
       mocks.lessonRepository,
       mocks.activityRepository,
+      calendarResolution,
     );
   });
 
@@ -469,6 +494,271 @@ describe('GeneratePlanUseCase', () => {
     expect(mocks.aiService.generatePlan).toHaveBeenCalledWith(
       expect.objectContaining({
         teachingHistory: undefined,
+      }),
+    );
+  });
+
+  // ===== Multi-calendar resolution tests =====
+
+  it('should use user-selected calendar instead of user-owned calendar', async () => {
+    const selectedCalendar = {
+      id: 'cal-school',
+      userId: 'admin-1',
+      academicYear: '2025/2026',
+      country: 'Angola',
+      type: 'SCHOOL' as const,
+      schoolId: 'school-1',
+      isActive: true,
+      version: 1,
+      startDate: new Date('2025-09-01'),
+      endDate: new Date('2026-07-18'),
+      terms: [
+        { id: 't1', calendarId: 'cal-school', name: '1.º Trimestre', trimester: 1, startDate: new Date('2025-09-01'), endDate: new Date('2025-12-12'), teachingWeeks: 10, createdAt: new Date() },
+      ],
+      events: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    // User has a selectedCalendarId
+    vi.mocked(mocks.userRepository.findById).mockResolvedValue({
+      id: 'user-1',
+      email: 'test@test.com',
+      name: 'Test',
+      emailVerified: true,
+      onboardingCompleted: true,
+      role: 'TEACHER' as never,
+      selectedCalendarId: 'cal-school',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    vi.mocked(mocks.schoolCalendarRepository.findById).mockResolvedValue(selectedCalendar);
+
+    await useCase.execute({
+      userId: 'user-1',
+      dosificacaoId: 'dos-1',
+      type: PlanType.TRIMESTER,
+      title: 'Trimestral',
+      trimester: 1,
+    });
+
+    // Should call findById (from CalendarResolutionService), NOT findByUserAndYear
+    expect(mocks.schoolCalendarRepository.findById).toHaveBeenCalledWith('cal-school');
+    expect(mocks.aiService.generatePlan).toHaveBeenCalledWith(
+      expect.objectContaining({
+        calendarContext: expect.objectContaining({
+          terms: expect.arrayContaining([
+            expect.objectContaining({ trimester: 1, teachingWeeks: 10 }),
+          ]),
+        }),
+      }),
+    );
+  });
+
+  it('should fallback to ministerial when user has no selected calendar', async () => {
+    const ministerialCal = {
+      id: 'cal-min',
+      userId: 'admin-1',
+      academicYear: '2025/2026',
+      country: 'Angola',
+      type: 'MINISTERIAL' as const,
+      isActive: true,
+      version: 1,
+      startDate: new Date('2025-09-01'),
+      endDate: new Date('2026-07-18'),
+      terms: [
+        { id: 't1', calendarId: 'cal-min', name: '1.º Trimestre', trimester: 1, startDate: new Date('2025-09-01'), endDate: new Date('2025-12-12'), teachingWeeks: 12, createdAt: new Date() },
+      ],
+      events: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    // User exists but has no selectedCalendarId
+    vi.mocked(mocks.userRepository.findById).mockResolvedValue({
+      id: 'user-1',
+      email: 'test@test.com',
+      name: 'Test',
+      emailVerified: true,
+      onboardingCompleted: true,
+      role: 'TEACHER' as never,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    vi.mocked(mocks.schoolCalendarRepository.findActiveMinisterial).mockResolvedValue(ministerialCal);
+
+    await useCase.execute({
+      userId: 'user-1',
+      dosificacaoId: 'dos-1',
+      type: PlanType.TRIMESTER,
+      title: 'Trimestral',
+      trimester: 1,
+    });
+
+    expect(mocks.schoolCalendarRepository.findActiveMinisterial).toHaveBeenCalledWith('2025/2026');
+    expect(mocks.aiService.generatePlan).toHaveBeenCalledWith(
+      expect.objectContaining({
+        calendarContext: expect.objectContaining({
+          terms: expect.arrayContaining([
+            expect.objectContaining({ trimester: 1, teachingWeeks: 12 }),
+          ]),
+        }),
+      }),
+    );
+  });
+
+  it('should persist calendarId in created plan for provenance tracking', async () => {
+    const cal = {
+      id: 'cal-track',
+      userId: 'admin-1',
+      academicYear: '2025/2026',
+      country: 'Angola',
+      type: 'MINISTERIAL' as const,
+      isActive: true,
+      version: 1,
+      startDate: new Date('2025-09-01'),
+      endDate: new Date('2026-07-18'),
+      terms: [],
+      events: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    vi.mocked(mocks.userRepository.findById).mockResolvedValue({
+      id: 'user-1',
+      email: 'test@test.com',
+      name: 'Test',
+      emailVerified: true,
+      onboardingCompleted: true,
+      role: 'TEACHER' as never,
+      selectedCalendarId: 'cal-track',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    vi.mocked(mocks.schoolCalendarRepository.findById).mockResolvedValue(cal);
+
+    await useCase.execute({
+      userId: 'user-1',
+      dosificacaoId: 'dos-1',
+      type: PlanType.ANNUAL,
+      title: 'Plano Anual',
+    });
+
+    expect(mocks.planRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        calendarId: 'cal-track',
+      }),
+    );
+  });
+
+  it('should persist undefined calendarId when no calendar exists', async () => {
+    await useCase.execute({
+      userId: 'user-1',
+      dosificacaoId: 'dos-1',
+      type: PlanType.ANNUAL,
+      title: 'Test',
+    });
+
+    expect(mocks.planRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        calendarId: undefined,
+        calendarVersion: undefined,
+      }),
+    );
+  });
+
+  // ===== Melhoria 1: calendarVersion tracking =====
+
+  it('should persist calendarVersion alongside calendarId', async () => {
+    const cal = {
+      id: 'cal-v3',
+      userId: 'admin-1',
+      academicYear: '2025/2026',
+      country: 'Angola',
+      type: 'MINISTERIAL' as const,
+      isActive: true,
+      version: 3,
+      startDate: new Date('2025-09-01'),
+      endDate: new Date('2026-07-18'),
+      terms: [],
+      events: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    vi.mocked(mocks.userRepository.findById).mockResolvedValue({
+      id: 'user-1',
+      email: 'test@test.com',
+      name: 'Test',
+      emailVerified: true,
+      onboardingCompleted: true,
+      role: 'TEACHER' as never,
+      selectedCalendarId: 'cal-v3',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    vi.mocked(mocks.schoolCalendarRepository.findById).mockResolvedValue(cal);
+
+    await useCase.execute({
+      userId: 'user-1',
+      dosificacaoId: 'dos-1',
+      type: PlanType.ANNUAL,
+      title: 'Plano Anual',
+    });
+
+    expect(mocks.planRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        calendarId: 'cal-v3',
+        calendarVersion: 3,
+      }),
+    );
+  });
+
+  // ===== Melhoria 3: Cache key includes calendarId =====
+
+  it('should pass calendarId in generatePlan input for cache keying', async () => {
+    const cal = {
+      id: 'cal-cache-key',
+      userId: 'admin-1',
+      academicYear: '2025/2026',
+      country: 'Angola',
+      type: 'MINISTERIAL' as const,
+      isActive: true,
+      version: 1,
+      startDate: new Date('2025-09-01'),
+      endDate: new Date('2026-07-18'),
+      terms: [],
+      events: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    vi.mocked(mocks.userRepository.findById).mockResolvedValue({
+      id: 'user-1',
+      email: 'test@test.com',
+      name: 'Test',
+      emailVerified: true,
+      onboardingCompleted: true,
+      role: 'TEACHER' as never,
+      selectedCalendarId: 'cal-cache-key',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    vi.mocked(mocks.schoolCalendarRepository.findById).mockResolvedValue(cal);
+
+    await useCase.execute({
+      userId: 'user-1',
+      dosificacaoId: 'dos-1',
+      type: PlanType.ANNUAL,
+      title: 'Test',
+    });
+
+    // Wait for background generation to fire
+    await new Promise(r => setTimeout(r, 50));
+
+    expect(mocks.aiService.generatePlan).toHaveBeenCalledWith(
+      expect.objectContaining({
+        calendarId: 'cal-cache-key',
       }),
     );
   });

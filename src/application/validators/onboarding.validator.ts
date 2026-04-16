@@ -8,6 +8,7 @@ export const onboardingSchema = z.object({
   classes: z.array(z.string().min(1)).min(1, 'Seleccione pelo menos uma classe'),
   numberOfClasses: z.number().int().min(1, 'Número de turmas deve ser pelo menos 1').max(50),
   teachingStyle: z.string().optional(),
+  selectedCalendarId: z.string().optional(),
 });
 
 export type OnboardingFormData = z.infer<typeof onboardingSchema>;

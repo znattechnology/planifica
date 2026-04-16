@@ -8,6 +8,7 @@ const DEFAULT_CONFIG: AIModelConfig = {
 
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
+const REQUEST_TIMEOUT_MS = 90_000; // 90 seconds
 
 // HTTP status codes that are safe to retry
 const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
@@ -28,6 +29,9 @@ export class AIClient {
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
       try {
         const response = await fetch(`${this.baseUrl}/chat/completions`, {
           method: 'POST',
@@ -45,6 +49,7 @@ export class AIClient {
               response_format: { type: 'json_object' },
             }),
           }),
+          signal: controller.signal,
         });
 
         if (!response.ok) {
@@ -58,6 +63,7 @@ export class AIClient {
               ? parseInt(retryAfter, 10) * 1000
               : BASE_DELAY_MS * Math.pow(2, attempt); // exponential backoff
 
+            clearTimeout(timeout);
             lastError = new Error(`AI API error (${response.status}): ${errorBody}`);
             await this.sleep(delay);
             continue;
@@ -67,6 +73,7 @@ export class AIClient {
         }
 
         const data = await response.json();
+        clearTimeout(timeout);
 
         return {
           content: data.choices[0].message.content,
@@ -78,6 +85,18 @@ export class AIClient {
           model: data.model,
         };
       } catch (error) {
+        clearTimeout(timeout);
+
+        // Convert abort errors to a clear timeout message
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          lastError = new Error(`AI API timeout após ${REQUEST_TIMEOUT_MS / 1000}s — o serviço pode estar sobrecarregado`);
+          if (attempt < MAX_RETRIES) {
+            await this.sleep(BASE_DELAY_MS * Math.pow(2, attempt));
+            continue;
+          }
+          throw lastError;
+        }
+
         lastError = error instanceof Error ? error : new Error(String(error));
 
         // Network errors (fetch throws) are retryable

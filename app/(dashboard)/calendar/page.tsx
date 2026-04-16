@@ -7,8 +7,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
-  Plus,
-  Trash2,
   GraduationCap,
   Flag,
   PartyPopper,
@@ -16,17 +14,12 @@ import {
   ClipboardCheck,
   RefreshCw,
   X,
-  Pencil,
   Activity,
   FileText,
   Clock,
   Target,
 } from 'lucide-react'
 import { Button } from '@/src/ui/components/ui/button'
-import { Input } from '@/src/ui/components/ui/input'
-import { Label } from '@/src/ui/components/ui/label'
-import { Textarea } from '@/src/ui/components/ui/textarea'
-import { Select } from '@/src/ui/components/ui/select'
 import { Badge } from '@/src/ui/components/ui/badge'
 import { FormAlert } from '@/src/ui/components/ui/form-error'
 import { API_ROUTES, ROUTES } from '@/src/shared/constants/routes.constants'
@@ -203,25 +196,13 @@ export default function CalendarPage() {
   const [calendar, setCalendar] = useState<SchoolCalendar | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
-  const [isCreating, setIsCreating] = useState(false)
-  const [showAddEvent, setShowAddEvent] = useState(false)
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null)
-  const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null)
   const [yearOffset, setYearOffset] = useState(0)
   const [activeTab, setActiveTab] = useState<ViewTab>('calendar')
 
   // Plans & Activities integration
   const [plans, setPlans] = useState<PlanData[]>([])
   const [activities, setActivities] = useState<ActivityData[]>([])
-
-  // Add event form
-  const [newEvent, setNewEvent] = useState({
-    title: '',
-    description: '',
-    startDate: '',
-    endDate: '',
-    type: 'CUSTOM',
-  })
 
   const academicYear = computeAcademicYear(yearOffset)
 
@@ -268,57 +249,6 @@ export default function CalendarPage() {
     fetchIntegrations()
   }, [fetchCalendar, fetchIntegrations])
 
-  async function handleCreateCalendar() {
-    setError('')
-    setIsCreating(true)
-    try {
-      const res = await fetchWithAuth(API_ROUTES.CALENDAR, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ academicYear, schoolName: user?.school }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error?.message || 'Erro ao criar calendário')
-      setCalendar(data.data.calendar)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro inesperado')
-    } finally {
-      setIsCreating(false)
-    }
-  }
-
-  async function handleAddEvent() {
-    if (!newEvent.title || !newEvent.startDate || !newEvent.endDate) return
-    setError('')
-    try {
-      const res = await fetchWithAuth(API_ROUTES.CALENDAR_EVENTS, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...newEvent, academicYear }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error?.message || 'Erro ao adicionar evento')
-      await fetchCalendar()
-      setShowAddEvent(false)
-      setNewEvent({ title: '', description: '', startDate: '', endDate: '', type: 'CUSTOM' })
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro inesperado')
-    }
-  }
-
-  async function handleRemoveEvent(eventId: string) {
-    try {
-      await fetchWithAuth(`${API_ROUTES.CALENDAR_EVENTS}?id=${eventId}&year=${encodeURIComponent(academicYear)}`, {
-        method: 'DELETE',
-      })
-      await fetchCalendar()
-      setSelectedEvent(null)
-      setEditingEvent(null)
-    } catch {
-      // ignore
-    }
-  }
-
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -353,21 +283,10 @@ export default function CalendarPage() {
 
         <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border/60 bg-card/30 p-12 text-center">
           <CalendarDays className="mb-4 h-12 w-12 text-muted-foreground/50" />
-          <h2 className="text-lg font-semibold">Nenhum calendário configurado</h2>
+          <h2 className="text-lg font-semibold">Nenhum calendário disponível para {academicYear}</h2>
           <p className="mt-2 max-w-md text-sm text-muted-foreground">
-            Gere automaticamente o calendário escolar angolano para {academicYear} com todos os feriados, férias e períodos de avaliação.
+            Contacte o administrador para criar o calendário escolar deste ano lectivo. O calendário define feriados, períodos de exames e semanas lectivas.
           </p>
-          <Button
-            onClick={handleCreateCalendar}
-            disabled={isCreating}
-            className="mt-6 bg-accent text-accent-foreground hover:bg-accent/90"
-          >
-            {isCreating ? (
-              <><Loader2 className="mr-2 h-4 w-4 animate-spin" />A gerar calendário...</>
-            ) : (
-              <><CalendarDays className="mr-2 h-4 w-4" />Gerar Calendário {academicYear}</>
-            )}
-          </Button>
         </div>
       </div>
     )
@@ -403,11 +322,6 @@ export default function CalendarPage() {
           <span className="text-sm font-bold min-w-[90px] text-center">{calendar.academicYear}</span>
           <Button variant="ghost" size="sm" onClick={() => setYearOffset(prev => prev + 1)}>
             <ChevronRight className="h-4 w-4" />
-          </Button>
-          <div className="w-px h-6 bg-border mx-1" />
-          <Button variant="outline" size="sm" onClick={() => setShowAddEvent(true)}>
-            <Plus className="mr-1.5 h-3.5 w-3.5" />
-            Evento
           </Button>
         </div>
       </div>
@@ -717,7 +631,6 @@ export default function CalendarPage() {
             {calendar.events.map(event => {
               const config = EVENT_TYPE_CONFIG[event.type] || EVENT_TYPE_CONFIG.CUSTOM
               const Icon = config.icon
-              const isCustom = event.type === 'CUSTOM' || event.type === 'SCHOOL_EVENT'
               const isPast = new Date(event.endDate) < today
               return (
                 <div
@@ -737,24 +650,6 @@ export default function CalendarPage() {
                   <Badge variant="secondary" className="hidden text-[10px] sm:inline-flex">
                     {config.label}
                   </Badge>
-                  {isCustom && (
-                    <div className="hidden group-hover:flex items-center gap-1">
-                      <button
-                        onClick={() => setEditingEvent(event)}
-                        className="text-muted-foreground hover:text-accent"
-                        title="Editar evento"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        onClick={() => handleRemoveEvent(event.id)}
-                        className="text-muted-foreground hover:text-destructive"
-                        title="Remover evento"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  )}
                 </div>
               )
             })}
@@ -785,211 +680,11 @@ export default function CalendarPage() {
                 </Badge>
               </p>
             </div>
-            {(selectedEvent.type === 'CUSTOM' || selectedEvent.type === 'SCHOOL_EVENT') && (
-              <div className="mt-4 flex gap-2 justify-end">
-                <Button size="sm" variant="outline" onClick={() => { setEditingEvent(selectedEvent); setSelectedEvent(null) }}>
-                  <Pencil className="mr-1.5 h-3.5 w-3.5" />Editar
-                </Button>
-                <Button size="sm" variant="outline" className="border-destructive/40 text-destructive hover:bg-destructive/10" onClick={() => handleRemoveEvent(selectedEvent.id)}>
-                  <Trash2 className="mr-1.5 h-3.5 w-3.5" />Eliminar
-                </Button>
-              </div>
-            )}
           </div>
         </div>
       )}
 
-      {/* Edit Event Modal */}
-      {editingEvent && (
-        <EditEventModal
-          event={editingEvent}
-          academicYear={academicYear}
-          onClose={() => setEditingEvent(null)}
-          onSaved={() => { setEditingEvent(null); fetchCalendar() }}
-        />
-      )}
-
-      {/* Add Event Modal */}
-      {showAddEvent && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowAddEvent(false)}>
-          <div className="w-full max-w-md rounded-xl border bg-card p-6 shadow-lg" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold">Adicionar Evento</h3>
-              <button onClick={() => setShowAddEvent(false)} className="text-muted-foreground hover:text-foreground">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Título *</Label>
-                <Input
-                  value={newEvent.title}
-                  onChange={e => setNewEvent(prev => ({ ...prev, title: e.target.value }))}
-                  placeholder="Ex: Reunião de pais"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Descrição</Label>
-                <Textarea
-                  value={newEvent.description}
-                  onChange={e => setNewEvent(prev => ({ ...prev, description: e.target.value }))}
-                  placeholder="Descrição opcional"
-                  rows={2}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label>Data início *</Label>
-                  <Input
-                    type="date"
-                    value={newEvent.startDate}
-                    onChange={e => setNewEvent(prev => ({ ...prev, startDate: e.target.value }))}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Data fim *</Label>
-                  <Input
-                    type="date"
-                    value={newEvent.endDate}
-                    onChange={e => setNewEvent(prev => ({ ...prev, endDate: e.target.value }))}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Tipo</Label>
-                <Select
-                  value={newEvent.type}
-                  onChange={e => setNewEvent(prev => ({ ...prev, type: e.target.value }))}
-                >
-                  {Object.entries(EVENT_TYPE_CONFIG).map(([key, config]) => (
-                    <option key={key} value={key}>{config.label}</option>
-                  ))}
-                </Select>
-              </div>
-
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setShowAddEvent(false)}>Cancelar</Button>
-                <Button
-                  onClick={handleAddEvent}
-                  disabled={!newEvent.title || !newEvent.startDate || !newEvent.endDate}
-                  className="bg-accent text-accent-foreground hover:bg-accent/90"
-                >
-                  Adicionar
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
 
-// ─── Edit Event Modal Component ─────────────────────────
-
-function EditEventModal({
-  event,
-  academicYear,
-  onClose,
-  onSaved,
-}: {
-  event: CalendarEvent
-  academicYear: string
-  onClose: () => void
-  onSaved: () => void
-}) {
-  const [form, setForm] = useState({
-    title: event.title,
-    description: event.description || '',
-    startDate: event.startDate.split('T')[0],
-    endDate: event.endDate.split('T')[0],
-    type: event.type,
-  })
-  const [isSaving, setIsSaving] = useState(false)
-  const [error, setError] = useState('')
-
-  async function handleSave() {
-    if (!form.title || !form.startDate || !form.endDate) return
-    setIsSaving(true)
-    setError('')
-    try {
-      // Delete old event and create new one (API doesn't have PATCH for events)
-      await fetchWithAuth(`${API_ROUTES.CALENDAR_EVENTS}?id=${event.id}&year=${encodeURIComponent(academicYear)}`, {
-        method: 'DELETE',
-      })
-      const res = await fetchWithAuth(API_ROUTES.CALENDAR_EVENTS, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, academicYear }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error?.message || 'Erro ao guardar evento')
-      onSaved()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro inesperado')
-      setIsSaving(false)
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div className="w-full max-w-md rounded-xl border bg-card p-6 shadow-lg" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold">Editar Evento</h3>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        {error && <FormAlert message={error} />}
-
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label>Título *</Label>
-            <Input value={form.title} onChange={e => setForm(prev => ({ ...prev, title: e.target.value }))} />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Descrição</Label>
-            <Textarea value={form.description} onChange={e => setForm(prev => ({ ...prev, description: e.target.value }))} rows={2} />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label>Data início *</Label>
-              <Input type="date" value={form.startDate} onChange={e => setForm(prev => ({ ...prev, startDate: e.target.value }))} />
-            </div>
-            <div className="space-y-2">
-              <Label>Data fim *</Label>
-              <Input type="date" value={form.endDate} onChange={e => setForm(prev => ({ ...prev, endDate: e.target.value }))} />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Tipo</Label>
-            <Select value={form.type} onChange={e => setForm(prev => ({ ...prev, type: e.target.value }))}>
-              {Object.entries(EVENT_TYPE_CONFIG).map(([key, config]) => (
-                <option key={key} value={key}>{config.label}</option>
-              ))}
-            </Select>
-          </div>
-
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={onClose} disabled={isSaving}>Cancelar</Button>
-            <Button
-              onClick={handleSave}
-              disabled={!form.title || !form.startDate || !form.endDate || isSaving}
-              className="bg-accent text-accent-foreground hover:bg-accent/90"
-            >
-              {isSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />A guardar...</> : 'Guardar'}
-            </Button>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}

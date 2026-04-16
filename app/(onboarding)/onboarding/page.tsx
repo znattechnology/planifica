@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -99,6 +99,7 @@ const STEPS = [
   { icon: BookOpen, title: 'Disciplinas' },
   { icon: Palette, title: 'Estilo' },
   { icon: Brain, title: 'A IA' },
+  { icon: CalendarDays, title: 'Calendário' },
   { icon: Rocket, title: 'Começar' },
 ]
 
@@ -133,6 +134,15 @@ const staggerItem = {
 
 // ─── Types ───────────────────────────────────────────────
 
+interface CalendarOption {
+  id: string
+  name: string
+  type: 'MINISTERIAL' | 'SCHOOL'
+  schoolName?: string
+  isRecommended?: boolean
+  reason?: string
+}
+
 interface OnboardingData {
   schoolName: string
   country: string
@@ -141,6 +151,7 @@ interface OnboardingData {
   classes: string[]
   numberOfClasses: number
   teachingStyle: string
+  selectedCalendarId?: string
 }
 
 // ─── Component ───────────────────────────────────────────
@@ -153,6 +164,10 @@ export default function OnboardingPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [customSubject, setCustomSubject] = useState('')
+
+  const [calendarOptions, setCalendarOptions] = useState<CalendarOption[]>([])
+  const [loadingCalendars, setLoadingCalendars] = useState(false)
+  const calendarFetchKey = useRef('')
 
   const [data, setData] = useState<OnboardingData>({
     schoolName: '',
@@ -193,7 +208,8 @@ export default function OnboardingPage() {
       case 2: return data.subjects.length > 0 && data.classes.length > 0 && data.numberOfClasses >= 1
       case 3: return data.teachingStyle !== ''
       case 4: return true // Intelligence explainer
-      case 5: return true // Get started
+      case 5: return true // Calendar selection (always valid — falls back to ministerial)
+      case 6: return true // Get started
       default: return false
     }
   }
@@ -563,20 +579,185 @@ export default function OnboardingPage() {
           })}
         </div>
 
-        <motion.div variants={staggerItem} className="flex justify-center pt-2">
-          <Button
-            onClick={handleNext}
-            className="gap-2 bg-accent text-accent-foreground hover:bg-accent/90 px-6"
-          >
-            Percebi como funciona
-            <ArrowRight className="h-4 w-4" />
-          </Button>
-        </motion.div>
       </motion.div>
     )
   }
 
-  // ─── Get Started Step (Step 5) ─────────────────────────
+  // ─── Calendar Selection Step (Step 5) ──────────────────
+
+  // Fetch calendars when entering step 5, or when school/year changes
+  useEffect(() => {
+    if (currentStep !== 5) return
+
+    const key = `${data.academicYear}|${data.schoolName}`
+    if (calendarFetchKey.current === key) return
+    calendarFetchKey.current = key
+
+    let cancelled = false
+
+    async function load() {
+      setLoadingCalendars(true)
+      try {
+        const params = new URLSearchParams({ available: 'true', year: data.academicYear })
+        if (data.schoolName.trim()) {
+          params.set('school', data.schoolName.trim())
+        }
+        const res = await fetch(`${API_ROUTES.CALENDAR}?${params.toString()}`)
+        if (!res.ok || cancelled) return
+
+        const json = await res.json()
+        if (cancelled) return
+
+        const opts: CalendarOption[] = []
+
+        // Read the pre-ordered options array from backend
+        if (Array.isArray(json.data?.options)) {
+          for (const opt of json.data.options) {
+            const cal = opt.calendar
+            if (!cal?.id) continue
+            opts.push({
+              id: cal.id,
+              name: cal.type === 'MINISTERIAL'
+                ? 'Ministério da Educação (Padrão Nacional)'
+                : cal.schoolName || 'Calendário da Escola',
+              type: cal.type,
+              schoolName: cal.schoolName,
+              isRecommended: opt.isRecommended,
+              reason: opt.reason,
+            })
+          }
+        }
+
+        // Fallback: read ministerial/schoolCalendars directly
+        if (opts.length === 0) {
+          if (json.data?.ministerial?.id) {
+            opts.push({
+              id: json.data.ministerial.id,
+              name: 'Ministério da Educação (Padrão Nacional)',
+              type: 'MINISTERIAL',
+              isRecommended: true,
+            })
+          }
+          if (Array.isArray(json.data?.schoolCalendars)) {
+            for (const sc of json.data.schoolCalendars) {
+              if (!sc?.id) continue
+              opts.push({
+                id: sc.id,
+                name: sc.schoolName || 'Calendário da Escola',
+                type: 'SCHOOL',
+                schoolName: sc.schoolName,
+                isRecommended: false,
+              })
+            }
+          }
+        }
+
+        if (cancelled) return
+        setCalendarOptions(opts)
+
+        // Auto-select recommended
+        if (opts.length > 0) {
+          const rec = opts.find(o => o.isRecommended) || opts[0]
+          updateData({ selectedCalendarId: rec.id })
+        }
+      } catch {
+        if (!cancelled) calendarFetchKey.current = '' // allow retry
+      } finally {
+        if (!cancelled) setLoadingCalendars(false)
+      }
+    }
+
+    load()
+    return () => { cancelled = true }
+  }, [currentStep, data.academicYear, data.schoolName, updateData])
+
+  function renderCalendarSelection() {
+    return (
+      <motion.div
+        variants={staggerContainer}
+        initial="hidden"
+        animate="show"
+        className="space-y-6"
+      >
+        <motion.div variants={staggerItem}>
+          <h2 className="text-lg font-semibold">Escolha o calendário escolar</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            O calendário define feriados, períodos de exames e semanas lectivas. A IA usa-o para gerar planos realistas.
+          </p>
+        </motion.div>
+
+        {loadingCalendars ? (
+          <motion.div variants={staggerItem} className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            A carregar calendários disponíveis...
+          </motion.div>
+        ) : calendarOptions.length === 0 ? (
+          <motion.div variants={staggerItem} className="rounded-xl border border-border/60 bg-card p-6 text-center">
+            <CalendarDays className="mx-auto h-8 w-8 text-muted-foreground mb-3" />
+            <p className="text-sm text-muted-foreground">
+              Será criado automaticamente o calendário ministerial de {data.country} para {data.academicYear}.
+            </p>
+          </motion.div>
+        ) : (
+          <motion.div variants={staggerItem} className="space-y-3">
+            {calendarOptions.map((cal) => {
+              const isSelected = data.selectedCalendarId === cal.id
+              const isMinisterial = cal.type === 'MINISTERIAL'
+              return (
+                <button
+                  key={cal.id}
+                  type="button"
+                  onClick={() => updateData({ selectedCalendarId: cal.id })}
+                  className={`w-full text-left rounded-xl border-2 p-4 transition-all ${
+                    isSelected
+                      ? 'border-accent bg-accent/5'
+                      : 'border-border/60 bg-card hover:border-accent/30'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
+                      isMinisterial ? 'bg-blue-500/10' : 'bg-amber-500/10'
+                    }`}>
+                      <span className="text-lg">{isMinisterial ? '\u{1F4D8}' : '\u{1F3EB}'}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-semibold truncate">
+                          {isMinisterial ? 'Calendário Ministerial' : cal.name}
+                        </h3>
+                        {cal.isRecommended && (
+                          <span className="shrink-0 rounded-full bg-green-500/10 px-2 py-0.5 text-[10px] font-medium text-green-600">
+                            Recomendado
+                          </span>
+                        )}
+                        {isMinisterial && !cal.isRecommended && (
+                          <span className="shrink-0 rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-medium text-blue-600">
+                            Padrão
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {cal.reason || (isMinisterial
+                          ? `Calendário oficial do Ministério da Educação de ${data.country}`
+                          : `Calendário específico de ${cal.schoolName || 'escola'}`
+                        )}
+                      </p>
+                    </div>
+                    {isSelected && (
+                      <Check className="h-5 w-5 shrink-0 text-accent" />
+                    )}
+                  </div>
+                </button>
+              )
+            })}
+          </motion.div>
+        )}
+
+      </motion.div>
+    )
+  }
+
+  // ─── Get Started Step (Step 6) ─────────────────────────
 
   function renderGetStarted() {
     return (
@@ -699,10 +880,9 @@ export default function OnboardingPage() {
   // ─── Render ────────────────────────────────────────────
 
   const isWelcome = currentStep === 0
-  const isIntelligence = currentStep === 4
-  const isFinal = currentStep === 5
+  const isFinal = currentStep === 6
   const showProgressBar = !isWelcome
-  const showNavigation = !isWelcome && !isIntelligence && !isFinal
+  const showNavigation = !isWelcome && !isFinal
 
   return (
     <div className="space-y-8">
@@ -724,7 +904,7 @@ export default function OnboardingPage() {
 
           {/* Progress bar */}
           <div className="flex items-center gap-1.5">
-            {STEPS.slice(1).map((step, index) => {
+            {STEPS.slice(1).map((_, index) => {
               const stepIndex = index + 1
               const isActive = stepIndex === currentStep
               const isCompleted = stepIndex < currentStep
@@ -764,7 +944,8 @@ export default function OnboardingPage() {
               {currentStep === 2 && renderSubjects()}
               {currentStep === 3 && renderTeachingStyle()}
               {currentStep === 4 && renderIntelligence()}
-              {currentStep === 5 && renderGetStarted()}
+              {currentStep === 5 && renderCalendarSelection()}
+              {currentStep === 6 && renderGetStarted()}
             </div>
           )}
         </motion.div>

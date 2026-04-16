@@ -27,4 +27,7 @@ export const env = {
   NEXTAUTH_URL: getEnvVar('NEXTAUTH_URL', IS_PRODUCTION ? undefined : 'http://localhost:3000'),
   AI_MODEL: process.env.AI_MODEL || 'gpt-4o',
   AI_MAX_TOKENS: parseInt(process.env.AI_MAX_TOKENS || '4096', 10),
+  // Upstash Redis — optional; if absent, in-memory rate limiting is used as fallback
+  UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL || '',
+  UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN || '',
 } as const;

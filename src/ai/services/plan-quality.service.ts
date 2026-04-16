@@ -2,6 +2,9 @@ import { Plan, PlanType, PlanStatus, PlanQualityScores } from '@/src/domain/enti
 import { CalendarContext } from '@/src/domain/interfaces/services/ai-plan-generator.service';
 import { TeachingHistoryContext } from './teaching-history.service';
 import { PACING_THRESHOLD, normalizeText } from '@/src/ai/config';
+import { CalendarImpactService } from '@/src/domain/services/calendar-impact.service';
+import { CalendarEvent, CalendarEventType } from '@/src/domain/entities/school-calendar.entity';
+import { toUTC, buildWeekRanges, parsePeriodPT } from '@/src/shared/utils/calendar-dates';
 
 export interface PlanInsight {
   type: 'success' | 'warning' | 'error';
@@ -18,6 +21,11 @@ export interface PlanQualityReport {
  * coherence, workload balance, calendar alignment, and history compliance.
  */
 export class PlanQualityService {
+  private readonly impactService: CalendarImpactService;
+
+  constructor(impactService?: CalendarImpactService) {
+    this.impactService = impactService || new CalendarImpactService();
+  }
 
   evaluate(
     plan: Plan,
@@ -58,6 +66,7 @@ export class PlanQualityService {
       calendarAlignmentScore: calendar.score,
       ...(history ? { historyComplianceScore: history.score } : {}),
       overallScore: overall,
+      qualityScore100: Math.round(overall * 10),
       qualityLabel,
       evaluatedAt: new Date().toISOString(),
     };
@@ -93,25 +102,37 @@ export class PlanQualityService {
       insights.push({ type: 'error', message: 'Objectivos gerais em falta.' });
     }
 
-    // Check against parent — topics should be subset
-    if (parent && content.topics && parent.content.topics) {
-      const parentTopicSet = new Set(
-        parent.content.topics.map(t => normalizeText(t.title)),
-      );
-      const orphanTopics = content.topics.filter(t =>
-        ![...parentTopicSet].some(pt =>
-          pt.includes(normalizeText(t.title)) ||
-          normalizeText(t.title).includes(pt)
-        ),
-      );
-      if (orphanTopics.length > 0) {
-        score -= Math.min(3, orphanTopics.length);
-        insights.push({
-          type: 'warning',
-          message: `${orphanTopics.length} tema(s) não encontrado(s) no plano pai: ${orphanTopics.map(t => t.title).join(', ')}.`,
-        });
-      } else {
-        insights.push({ type: 'success', message: 'Todos os temas alinhados com o plano pai.' });
+    // Check against parent — topics should be subset of the correct trimester scope
+    if (parent && content.topics) {
+      const trimNum = plan.trimester;
+      const trimSection = (plan.type === PlanType.TRIMESTER && trimNum && parent.content.trimesters)
+        ? parent.content.trimesters.find(t => t.number === trimNum)
+        : undefined;
+
+      const scopeTopics = trimSection
+        ? trimSection.topics
+        : (parent.content.topics ?? []);
+
+      if (scopeTopics.length > 0) {
+        const parentTopicSet = new Set(scopeTopics.map(t => normalizeText(t.title)));
+        const orphanTopics = content.topics.filter(t =>
+          ![...parentTopicSet].some(pt =>
+            pt.includes(normalizeText(t.title)) ||
+            normalizeText(t.title).includes(pt),
+          ),
+        );
+        if (orphanTopics.length > 0) {
+          score -= Math.min(3, orphanTopics.length);
+          const scopeLabel = trimSection
+            ? `escopo do ${trimNum}º trimestre`
+            : 'plano pai';
+          insights.push({
+            type: 'warning',
+            message: `${orphanTopics.length} tema(s) fora do ${scopeLabel}: ${orphanTopics.map(t => t.title).join(', ')}.`,
+          });
+        } else {
+          insights.push({ type: 'success', message: 'Todos os temas alinhados com o plano pai.' });
+        }
       }
     }
 
@@ -190,6 +211,10 @@ export class PlanQualityService {
     return { score: Math.max(0, Math.min(10, score)), insights };
   }
 
+  /**
+   * Calendar alignment evaluation.
+   * Delegates holiday/event detection to CalendarImpactService (single source of truth).
+   */
   private evaluateCalendarAlignment(
     plan: Plan,
     calendar?: CalendarContext,
@@ -198,8 +223,7 @@ export class PlanQualityService {
     const insights: PlanInsight[] = [];
 
     if (!calendar) {
-      // No calendar to check against — assume ok but note it
-      score = 7; // neutral-ish score
+      score = 7;
       insights.push({
         type: 'warning',
         message: 'Calendário escolar não disponível — não foi possível verificar alinhamento.',
@@ -207,6 +231,7 @@ export class PlanQualityService {
       return { score, insights };
     }
 
+    // Week count alignment (trimester plans)
     if (plan.type === PlanType.TRIMESTER && plan.content.weeklyPlan) {
       const trimNum = plan.trimester || 1;
       const term = calendar.terms.find(t => t.trimester === trimNum);
@@ -217,43 +242,62 @@ export class PlanQualityService {
         const diff = Math.abs(expectedWeeks - actualWeeks);
 
         if (diff === 0) {
-          insights.push({
-            type: 'success',
-            message: `Alinhado com calendário: ${actualWeeks} semanas lectivas (exacto).`,
-          });
+          insights.push({ type: 'success', message: `Alinhado com calendário: ${actualWeeks} semanas lectivas (exacto).` });
         } else if (diff <= 1) {
           score -= 1;
-          insights.push({
-            type: 'warning',
-            message: `Pequena diferença: ${actualWeeks} semanas no plano vs ${expectedWeeks} no calendário.`,
-          });
+          insights.push({ type: 'warning', message: `Pequena diferença: ${actualWeeks} semanas no plano vs ${expectedWeeks} no calendário.` });
         } else {
           score -= Math.min(5, diff);
-          insights.push({
-            type: 'error',
-            message: `Desalinhamento: ${actualWeeks} semanas no plano vs ${expectedWeeks} no calendário (diferença: ${diff}).`,
-          });
+          insights.push({ type: 'error', message: `Desalinhamento: ${actualWeeks} semanas no plano vs ${expectedWeeks} no calendário (diferença: ${diff}).` });
         }
-      }
 
-      // Check for lessons scheduled on holidays
-      const holidayDates = new Set(
-        calendar.events.map(e => e.startDate),
-      );
-      const conflicting = plan.content.weeklyPlan.filter(w =>
-        w.period && holidayDates.has(w.period.split(' ')[0]),
-      );
-      if (conflicting.length > 0) {
-        score -= 2;
-        insights.push({
-          type: 'error',
-          message: `${conflicting.length} semana(s) podem conflitar com feriados.`,
-        });
-      } else {
-        insights.push({ type: 'success', message: 'Sem conflitos com feriados detectados.' });
+        // Holiday conflict detection using CalendarImpactService (single source of truth)
+        const termStart = toUTC(new Date(term.startDate));
+        const termEnd = toUTC(new Date(term.endDate));
+        const weekRanges = buildWeekRanges(termStart, termEnd);
+        const calendarEvents: CalendarEvent[] = calendar.events.map((e, idx) => ({
+          id: `quality-${idx}`,
+          calendarId: '',
+          title: e.title,
+          startDate: new Date(e.startDate),
+          endDate: new Date(e.endDate),
+          type: e.type as CalendarEventType,
+          allDay: true,
+          createdAt: new Date(),
+        }));
+
+        let conflictingWeeks = 0;
+        for (let i = 0; i < plan.content.weeklyPlan.length && i < weekRanges.length; i++) {
+          const week = plan.content.weeklyPlan[i];
+          if (week.numLessons === 0) continue;
+
+          let weekStart: Date;
+          let weekEnd: Date;
+          if (week.period) {
+            const parsed = parsePeriodPT(week.period);
+            if (parsed) { weekStart = parsed.start; weekEnd = parsed.end; }
+            else { weekStart = weekRanges[i].start; weekEnd = weekRanges[i].end; }
+          } else {
+            weekStart = weekRanges[i].start;
+            weekEnd = weekRanges[i].end;
+          }
+
+          const impact = this.impactService.analyzeWeekImpact(weekStart, weekEnd, calendarEvents);
+          if ((impact.hasBreak || impact.lessonReduction >= 1.0) && week.numLessons > 0) {
+            conflictingWeeks++;
+          }
+        }
+
+        if (conflictingWeeks > 0) {
+          score -= Math.min(4, conflictingWeeks * 2);
+          insights.push({ type: 'error', message: `${conflictingWeeks} semana(s) com aulas durante feriados/férias.` });
+        } else {
+          insights.push({ type: 'success', message: 'Sem conflitos com feriados detectados.' });
+        }
       }
     }
 
+    // Annual plan: total weeks alignment
     if (plan.type === PlanType.ANNUAL) {
       const totalCalendarWeeks = calendar.terms.reduce((sum, t) => sum + t.teachingWeeks, 0);
       const planWeeks = plan.content.totalWeeks;
@@ -261,10 +305,7 @@ export class PlanQualityService {
         insights.push({ type: 'success', message: `Total de semanas alinhado com calendário (${planWeeks}/${totalCalendarWeeks}).` });
       } else if (planWeeks) {
         score -= 2;
-        insights.push({
-          type: 'warning',
-          message: `Total semanas: plano tem ${planWeeks}, calendário tem ${totalCalendarWeeks}.`,
-        });
+        insights.push({ type: 'warning', message: `Total semanas: plano tem ${planWeeks}, calendário tem ${totalCalendarWeeks}.` });
       }
     }
 

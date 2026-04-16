@@ -4,7 +4,7 @@ import { handleApiError } from '@/src/shared/lib/api-response';
 import { getAccessToken } from '@/src/shared/lib/auth-cookies';
 import { AIExplanationService } from '@/src/ai/services/ai-explanation.service';
 import { TeachingHistoryService } from '@/src/ai/services/teaching-history.service';
-import type { CalendarContext } from '@/src/domain/interfaces/services/ai-plan-generator.service';
+import { resolveCalendarContextWithMetadata } from '@/src/shared/utils/calendar-context';
 
 /**
  * GET /api/plans/explanation?planId=xxx
@@ -56,29 +56,17 @@ export async function GET(request: NextRequest) {
       teachingHistory = await historyService.buildContext(user.id, plan.subject);
     } catch { /* proceed without */ }
 
-    // Get calendar context
-    let calendarContext: CalendarContext | undefined;
-    try {
-      const calendar = await container.schoolCalendarRepository.findByUserAndYear(
-        user.id, plan.academicYear,
-      );
-      if (calendar) {
-        calendarContext = {
-          terms: calendar.terms.map(t => ({
-            trimester: t.trimester,
-            startDate: t.startDate.toISOString().split('T')[0],
-            endDate: t.endDate.toISOString().split('T')[0],
-            teachingWeeks: t.teachingWeeks,
-          })),
-          events: calendar.events.map(e => ({
-            title: e.title,
-            startDate: e.startDate.toISOString().split('T')[0],
-            endDate: e.endDate.toISOString().split('T')[0],
-            type: e.type,
-          })),
-        };
-      }
-    } catch { /* proceed without */ }
+    // Get calendar context with metadata
+    const { calendarContext, calendarInfo, fallbackUsed } = await resolveCalendarContextWithMetadata(
+      user.id, plan.academicYear,
+      container.calendarResolutionService,
+    );
+
+    // Check if plan is outdated relative to current calendar
+    let isOutdated = false;
+    if (calendarInfo && plan.calendarId && plan.calendarVersion) {
+      isOutdated = plan.calendarVersion !== calendarInfo.version && plan.calendarId === calendarInfo.id;
+    }
 
     const explanationService = new AIExplanationService();
     const result = explanationService.explain(
@@ -89,7 +77,12 @@ export async function GET(request: NextRequest) {
       plan.qualityScores,
     );
 
-    return NextResponse.json({ success: true, data: result });
+    return NextResponse.json({
+      success: true,
+      data: result,
+      calendar: calendarInfo ? { ...calendarInfo, fallbackUsed } : undefined,
+      isOutdated,
+    });
   } catch (err) {
     return handleApiError(err);
   }

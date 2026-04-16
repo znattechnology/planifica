@@ -2,6 +2,8 @@ import { PlanType } from '@/src/domain/entities/plan.entity';
 import { Dosificacao } from '@/src/domain/entities/dosificacao.entity';
 import { SYSTEM_PROMPTS } from './system-prompts';
 import { AIMessage } from '@/src/ai/types/ai.types';
+import { sanitizePromptInput } from '@/src/shared/lib/sanitize-prompt';
+import { sanitizeDosificacaoContent, slimDosificacaoContent, DOS_CONTENT_MAX_CHARS } from '@/src/shared/lib/sanitize-dosificacao';
 
 interface PromptContext {
   type: PlanType;
@@ -38,9 +40,9 @@ export class PlanPromptBuilder {
 
   private static buildUserPrompt(context: PromptContext): string {
     const parts: string[] = [
-      `Subject: ${context.subject}`,
-      `Grade: ${context.grade}`,
-      `Academic Year: ${context.dosificacao.academicYear}`,
+      `Subject: ${sanitizePromptInput(context.subject)}`,
+      `Grade: ${sanitizePromptInput(context.grade)}`,
+      `Academic Year: ${sanitizePromptInput(context.dosificacao.academicYear)}`,
     ];
 
     if (context.trimester) {
@@ -52,15 +54,22 @@ export class PlanPromptBuilder {
     }
 
     parts.push(`\nDosificação (Annual Content Plan):`);
-    parts.push(JSON.stringify(context.dosificacao.content, null, 2));
+    const sanitizedDosLegacy = sanitizeDosificacaoContent(context.dosificacao.content);
+    const dosJsonLegacy = JSON.stringify(sanitizedDosLegacy, null, 2);
+    if (dosJsonLegacy.length > DOS_CONTENT_MAX_CHARS) {
+      parts.push(JSON.stringify(slimDosificacaoContent(sanitizedDosLegacy), null, 2));
+      parts.push('[NOTA] Dosificação comprimida — apenas campos essenciais incluídos por excesso de conteúdo.');
+    } else {
+      parts.push(dosJsonLegacy);
+    }
 
     if (context.parentPlanContent) {
       parts.push(`\nParent Plan Content (use as reference):`);
-      parts.push(context.parentPlanContent);
+      parts.push(sanitizePromptInput(context.parentPlanContent));
     }
 
     if (context.additionalContext) {
-      parts.push(`\nAdditional Instructions: ${context.additionalContext}`);
+      parts.push(`\nAdditional Instructions: ${sanitizePromptInput(context.additionalContext)}`);
     }
 
     parts.push(`\nGenerate the plan in structured JSON format with the following fields:`);

@@ -58,6 +58,24 @@ enum ReportStatus {
   FINALIZED
 }
 
+enum SubscriptionPlan {
+  FREE
+  PREMIUM
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  PENDING_PAYMENT
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  CONFIRMED
+  EXPIRED
+}
+
 model User {
   id                  String   @id @default(cuid())
   email               String   @unique
@@ -68,22 +86,66 @@ model User {
   role                UserRole @default(TEACHER)
   school              String?
   subject             String?
+  selectedCalendarId  String?  @map("selected_calendar_id")
   createdAt           DateTime @default(now()) @map("created_at")
   updatedAt           DateTime @updatedAt @map("updated_at")
 
+  selectedCalendar   SchoolCalendar?  @relation("SelectedCalendar", fields: [selectedCalendarId], references: [id], onDelete: SetNull)
   teacherProfile     TeacherProfile?
-  schoolCalendars    SchoolCalendar[]
+  schoolCalendars    SchoolCalendar[] @relation("OwnedCalendars")
   plans              Plan[]
   dosificacoes       Dosificacao[]
   lessons            Lesson[]
   teachingActivities TeachingActivity[]
   reports            Report[]
+  subscriptions      Subscription[]
+  payments           Payment[]
 
   passwordResetTokens      PasswordResetToken[]
   emailVerificationTokens  EmailVerificationToken[]
   passwordChangeTokens     PasswordChangeToken[]
 
   @@map("users")
+}
+
+model Subscription {
+  id        String             @id @default(cuid())
+  userId    String             @map("user_id")
+  plan      SubscriptionPlan   @default(FREE)
+  status    SubscriptionStatus @default(ACTIVE)
+  startDate DateTime           @map("start_date")
+  endDate   DateTime           @map("end_date")
+  createdAt DateTime           @default(now()) @map("created_at")
+  updatedAt DateTime           @updatedAt @map("updated_at")
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payments Payment[]
+
+  @@index([userId, status])
+  @@map("subscriptions")
+}
+
+model Payment {
+  id               String        @id @default(cuid())
+  userId           String        @map("user_id")
+  subscriptionId   String        @map("subscription_id")
+  reference        String        @unique
+  amount           Float
+  status           PaymentStatus @default(PENDING)
+  source           String        @default("UPGRADE_BUTTON") @map("source")
+  confirmationCode String        @map("confirmation_code")
+  failedAttempts   Int           @default(0) @map("failed_attempts")
+  blockedUntil     DateTime?     @map("blocked_until")
+  createdAt        DateTime      @default(now()) @map("created_at")
+  expiresAt        DateTime      @map("expires_at")
+  confirmedAt      DateTime?     @map("confirmed_at")
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([reference])
+  @@map("payments")
 }
 
 model TeacherProfile {
@@ -178,23 +240,30 @@ model Plan {
   status         PlanStatus @default(DRAFT)
   parentPlanId   String?    @map("parent_plan_id")
   dosificacaoId  String     @map("dosificacao_id")
-  createdAt      DateTime   @default(now()) @map("created_at")
+  calendarId       String?    @map("calendar_id")
+  calendarVersion  Int?       @map("calendar_version")
+  calendarSnapshot Json?      @map("calendar_snapshot")
+  createdAt        DateTime   @default(now()) @map("created_at")
   updatedAt      DateTime   @updatedAt @map("updated_at")
 
-  currentVersion       Int        @default(1) @map("current_version")
-  qualityScores        Json?      @map("quality_scores")
-  allowAutoAdjustments Boolean    @default(true) @map("allow_auto_adjustments")
+  currentVersion         Int        @default(1) @map("current_version")
+  qualityScores          Json?      @map("quality_scores")
+  allowAutoAdjustments   Boolean    @default(true) @map("allow_auto_adjustments")
+  calendarSource         String?    @map("calendar_source")
+  generatingStartedAt    DateTime?  @map("generating_started_at")
 
-  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  dosificacao Dosificacao   @relation(fields: [dosificacaoId], references: [id])
-  parentPlan  Plan?         @relation("PlanHierarchy", fields: [parentPlanId], references: [id])
-  childPlans  Plan[]        @relation("PlanHierarchy")
-  lessons     Lesson[]
-  versions    PlanVersion[]
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dosificacao    Dosificacao    @relation(fields: [dosificacaoId], references: [id])
+  parentPlan     Plan?          @relation("PlanHierarchy", fields: [parentPlanId], references: [id])
+  childPlans     Plan[]         @relation("PlanHierarchy")
+  sourceCalendar SchoolCalendar? @relation("PlanCalendar", fields: [calendarId], references: [id], onDelete: SetNull)
+  lessons        Lesson[]
+  versions       PlanVersion[]
 
   @@index([dosificacaoId])
   @@index([parentPlanId])
   @@index([userId, type])
+  @@index([calendarId])
   @@map("plans")
 }
 
@@ -290,6 +359,11 @@ model Report {
 
 // ─── School Calendar ────────────────────────────────────
 
+enum CalendarType {
+  MINISTERIAL
+  SCHOOL
+}
+
 enum CalendarEventType {
   NATIONAL_HOLIDAY
   SCHOOL_HOLIDAY
@@ -302,21 +376,29 @@ enum CalendarEventType {
 }
 
 model SchoolCalendar {
-  id           String   @id @default(cuid())
-  userId       String   @map("user_id")
-  academicYear String   @map("academic_year")
-  country      String   @default("Angola")
-  schoolName   String?  @map("school_name")
-  startDate    DateTime @map("start_date")
-  endDate      DateTime @map("end_date")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id           String       @id @default(cuid())
+  userId       String       @map("user_id")
+  academicYear String       @map("academic_year")
+  country      String       @default("Angola")
+  schoolName   String?      @map("school_name")
+  type         CalendarType @default(MINISTERIAL)
+  schoolId     String?      @map("school_id")
+  isActive     Boolean      @default(true) @map("is_active")
+  version      Int          @default(1)
+  startDate    DateTime     @map("start_date")
+  endDate      DateTime     @map("end_date")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
 
-  user   User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  terms  CalendarTerm[]
-  events CalendarEvent[]
+  user           User            @relation("OwnedCalendars", fields: [userId], references: [id], onDelete: Cascade)
+  selectedByUsers User[]         @relation("SelectedCalendar")
+  plans          Plan[]          @relation("PlanCalendar")
+  terms          CalendarTerm[]
+  events         CalendarEvent[]
 
-  @@unique([userId, academicYear])
+  @@unique([type, schoolId, academicYear])
+  @@index([type, academicYear, isActive])
+  @@index([schoolId, academicYear])
   @@map("school_calendars")
 }
 
@@ -343,13 +425,67 @@ model CalendarEvent {
   description String?
   startDate   DateTime          @map("start_date")
   endDate     DateTime          @map("end_date")
-  type        CalendarEventType
-  allDay      Boolean           @default(true) @map("all_day")
-  createdAt   DateTime          @default(now()) @map("created_at")
+  type          CalendarEventType
+  typeConfigId  String?           @map("type_config_id")
+  color         String?
+  allDay        Boolean           @default(true) @map("all_day")
+  createdAt     DateTime          @default(now()) @map("created_at")
+  createdBy     String?           @map("created_by")
+  updatedBy     String?           @map("updated_by")
+  updatedAt     DateTime?         @map("updated_at")
 
-  calendar SchoolCalendar @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+  calendar   SchoolCalendar          @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+  typeConfig CalendarEventTypeConfig? @relation(fields: [typeConfigId], references: [id], onDelete: SetNull)
 
   @@index([calendarId, type])
   @@index([calendarId, startDate])
   @@map("calendar_events")
+}
+
+// ─── Audit Log ───────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  adminId    String   @map("admin_id")
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id")
+  before     Json
+  after      Json
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([entityId])
+  @@index([adminId, createdAt])
+  @@map("audit_logs")
+}
+
+model SubscriptionPlanConfig {
+  id                 String   @id @default(cuid())
+  slug               String   @unique                    // Matches SubscriptionPlan enum: "FREE" | "PREMIUM"
+  name               String
+  priceKz            Float    @map("price_kz")
+  durationDays       Int      @map("duration_days")
+  plansPerMonth      Int      @map("plans_per_month")    // -1 = unlimited
+  paymentExpiryHours Int      @map("payment_expiry_hours")
+  isActive           Boolean  @default(true) @map("is_active")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  @@map("subscription_plan_configs")
+}
+
+model CalendarEventTypeConfig {
+  id        String   @id @default(cuid())
+  name      String
+  label     String
+  color     String   @default("#6B7280")
+  schoolId  String?  @map("school_id")
+  isSystem  Boolean  @default(false) @map("is_system")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  events CalendarEvent[]
+
+  @@unique([name, schoolId])
+  @@map("calendar_event_type_configs")
 }

@@ -4,6 +4,7 @@ export interface PlanQualityScores {
   calendarAlignmentScore: number;   // 0-10: respects teaching weeks, avoids holidays
   historyComplianceScore?: number;  // 0-10: did AI actually adapt to teaching history?
   overallScore: number;             // 0-10: weighted average
+  qualityScore100: number;          // 0-100: overallScore * 10, for UI display
   qualityLabel: 'excellent' | 'good' | 'needs_review' | 'unverified'; // simplified verdict
   evaluatedAt: string;              // ISO date
 }
@@ -22,8 +23,13 @@ export interface Plan {
   status: PlanStatus;
   parentPlanId?: string;
   dosificacaoId: string;
+  calendarId?: string;
+  calendarVersion?: number;
+  calendarSnapshot?: Record<string, unknown>;
+  calendarSource?: 'selected' | 'ministerial' | 'legacy' | 'none';
   qualityScores?: PlanQualityScores;
   allowAutoAdjustments?: boolean;
+  generatingStartedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -64,10 +70,16 @@ export interface PlanContent {
   homework?: string;
   bibliography?: string[];
   criticalNotes?: string;
+  /** Non-blocking pedagogical feedback for the teacher. Populated from quality analysis. */
+  feedback?: string[];
+  /** Actionable suggestions shown when plan generation fails or is degraded. */
+  suggestions?: string[];
   // Trimester plan specific
   weeklyPlan?: WeeklyPlanItem[];
   totalWeeks?: number;
   totalLessons?: number;
+  // Annual plan specific — trimester-partitioned structure (source of truth for TrimesterPlanStrategy)
+  trimesters?: AnnualTrimesterSection[];
   // Legacy fallback
   objectives?: string[];
 }
@@ -86,6 +98,16 @@ export interface TopicItem {
   subtopics?: string[];
   duration?: string;
   week?: number;
+}
+
+export interface AnnualTrimesterSection {
+  number: 1 | 2 | 3;
+  startDate?: string;    // YYYY-MM-DD — from calendar
+  endDate?: string;      // YYYY-MM-DD — from calendar
+  estimatedWeeks: number;
+  topics: TopicItem[];
+  generalObjectives: string[];
+  specificObjectives: string[];
 }
 
 export interface PlanLessonPhase {

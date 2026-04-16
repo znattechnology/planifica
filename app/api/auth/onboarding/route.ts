@@ -27,15 +27,24 @@ export async function POST(request: Request) {
 
     const profile = await container.completeOnboardingUseCase.execute(user.id, parsed.data);
 
-    // Auto-generate Angola school calendar when onboarding completes
-    try {
-      await container.createSchoolCalendarUseCase.execute(user.id, {
-        academicYear: parsed.data.academicYear,
-        country: parsed.data.country || 'Angola',
-        schoolName: parsed.data.schoolName,
-      });
-    } catch {
-      // Calendar may already exist — ignore duplicate errors
+    // Set the user's selected calendar.
+    // Calendars are created by admins — the user only selects one during onboarding.
+    // If no calendar was selected, try to auto-select the ministerial calendar for this year.
+    const selectedCalendarId = parsed.data.selectedCalendarId;
+    if (selectedCalendarId) {
+      try {
+        await container.userRepository.update(user.id, { selectedCalendarId });
+      } catch { /* non-critical */ }
+    } else {
+      // No selection — try to auto-assign the ministerial calendar
+      try {
+        const ministerial = await container.schoolCalendarRepository.findActiveMinisterial(
+          parsed.data.academicYear,
+        );
+        if (ministerial) {
+          await container.userRepository.update(user.id, { selectedCalendarId: ministerial.id });
+        }
+      } catch { /* non-critical */ }
     }
 
     return NextResponse.json(

@@ -36,6 +36,8 @@ import { fetchWithAuth } from '@/src/shared/lib/fetch-with-auth'
 import { exportPlanToPDF } from '@/src/shared/utils/pdf-export'
 import { exportPlanToWord } from '@/src/shared/utils/word-export'
 import { exportPlanToExcel } from '@/src/shared/utils/excel-export'
+import { useUpgradeGuard } from '@/src/shared/hooks/use-upgrade-guard'
+import { PaymentModal } from '@/src/ui/components/subscription/payment-modal'
 
 type PlanStatus = 'DRAFT' | 'GENERATING' | 'GENERATED' | 'REVIEWED' | 'APPROVED'
 
@@ -103,6 +105,7 @@ export default function BiweeklyPlansPage() {
   const [expandedPlan, setExpandedPlan] = useState<string | null>(null)
   const [plans, setPlans] = useState<PlanItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const { guard, upgradeModal, closeUpgradeModal } = useUpgradeGuard()
 
   useEffect(() => {
     async function fetchPlans() {
@@ -393,21 +396,21 @@ export default function BiweeklyPlansPage() {
                                     Editar
                                   </button>
                                   <button
-                                    onClick={() => exportPlanToPDF(plan)}
+                                    onClick={guard(() => exportPlanToPDF(plan))}
                                     className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-secondary hover:text-foreground"
                                   >
                                     <Download className="h-3.5 w-3.5" />
                                     Exportar PDF
                                   </button>
                                   <button
-                                    onClick={() => exportPlanToWord(plan)}
+                                    onClick={guard(() => exportPlanToWord(plan))}
                                     className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-secondary hover:text-foreground"
                                   >
                                     <Download className="h-3.5 w-3.5" />
                                     Exportar Word
                                   </button>
                                   <button
-                                    onClick={() => exportPlanToExcel(plan)}
+                                    onClick={guard(() => exportPlanToExcel(plan))}
                                     className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-secondary hover:text-foreground"
                                   >
                                     <Download className="h-3.5 w-3.5" />
@@ -556,7 +559,7 @@ export default function BiweeklyPlansPage() {
                                     size="sm"
                                     variant="outline"
                                     className="border-border/60"
-                                    onClick={() => exportPlanToPDF(plan)}
+                                    onClick={guard(() => exportPlanToPDF(plan))}
                                   >
                                     <Download className="mr-1.5 h-3.5 w-3.5" />
                                     Exportar PDF
@@ -565,7 +568,7 @@ export default function BiweeklyPlansPage() {
                                     size="sm"
                                     variant="outline"
                                     className="border-border/60"
-                                    onClick={() => exportPlanToWord(plan)}
+                                    onClick={guard(() => exportPlanToWord(plan))}
                                   >
                                     <Download className="mr-1.5 h-3.5 w-3.5" />
                                     Word
@@ -574,7 +577,7 @@ export default function BiweeklyPlansPage() {
                                     size="sm"
                                     variant="outline"
                                     className="border-border/60"
-                                    onClick={() => exportPlanToExcel(plan)}
+                                    onClick={guard(() => exportPlanToExcel(plan))}
                                   >
                                     <Download className="mr-1.5 h-3.5 w-3.5" />
                                     Excel
@@ -645,6 +648,14 @@ export default function BiweeklyPlansPage() {
           </Button>
         </div>
       </div>
+      {upgradeModal && (
+        <PaymentModal
+          reference={upgradeModal.reference}
+          amount={upgradeModal.amount}
+          expiresAt={upgradeModal.expiresAt}
+          onClose={closeUpgradeModal}
+        />
+      )}
     </div>
   )
 }

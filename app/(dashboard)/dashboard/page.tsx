@@ -20,6 +20,7 @@ import { Button } from '@/src/ui/components/ui/button'
 import { Badge } from '@/src/ui/components/ui/badge'
 import { ROUTES, API_ROUTES } from '@/src/shared/constants/routes.constants'
 import { fetchWithAuth } from '@/src/shared/lib/fetch-with-auth'
+import { SubscriptionCard } from '@/src/ui/components/subscription/subscription-card'
 
 interface PlanSummary {
   id: string
@@ -189,7 +190,7 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* Quick Actions + Recent */}
+      {/* Quick Actions + Recent + Subscription */}
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {/* Quick Actions */}
         <div className="lg:col-span-2">
@@ -217,8 +218,16 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Recent Activity */}
-        <div>
+        {/* Recent Activity + Subscription */}
+        <div className="space-y-6">
+          <div>
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+              Subscrição
+            </h2>
+            <SubscriptionCard />
+          </div>
+
+          <div>
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold">Actividade Recente</h2>
             <Link href={ROUTES.PLANS} className="text-xs text-accent hover:underline">
@@ -282,6 +291,7 @@ export default function DashboardPage() {
                 ))}
               </div>
             )}
+          </div>
           </div>
         </div>
       </div>

@@ -66,7 +66,8 @@ export async function POST(request: NextRequest) {
     let extractedText: string
     try {
       extractedText = await extractTextFromFile(buffer, fileType)
-    } catch {
+    } catch (extractErr) {
+      console.error('[PlanoAnual Import] Extraction error:', extractErr)
       return NextResponse.json(
         { success: false, error: { code: 'PARSE_ERROR', message: 'Não foi possível ler o conteúdo do ficheiro. Verifique se o ficheiro não está corrompido.' } },
         { status: 422 },

@@ -8,4 +8,5 @@ export interface CreatePlanDTO {
   week?: number;
   parentPlanId?: string;
   additionalContext?: string;
+  lessonsPerWeek?: number;
 }

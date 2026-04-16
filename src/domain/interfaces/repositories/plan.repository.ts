@@ -23,4 +23,5 @@ export interface IPlanRepository {
   updateStatus(id: string, status: PlanStatus): Promise<Plan>;
   delete(id: string): Promise<void>;
   findAll(pagination?: PaginationParams): Promise<PaginatedResult<Plan>>;
+  countByUserIdSince(userId: string, since: Date): Promise<number>;
 }

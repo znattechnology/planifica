@@ -29,6 +29,20 @@ export class UnauthorizedError extends DomainError {
   }
 }
 
+export class ForbiddenError extends DomainError {
+  constructor(message = 'Forbidden') {
+    super(message, 'FORBIDDEN');
+    this.name = 'ForbiddenError';
+  }
+}
+
+export class SubscriptionLimitError extends DomainError {
+  constructor(message: string) {
+    super(message, 'SUBSCRIPTION_LIMIT');
+    this.name = 'SubscriptionLimitError';
+  }
+}
+
 export class EmailNotVerifiedError extends DomainError {
   constructor(
     public readonly userId: string,

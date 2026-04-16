@@ -20,6 +20,12 @@ export function handleApiError(err: unknown): NextResponse<ApiResponse> {
     if (err.name === 'UnauthorizedError') {
       return errorResponse({ code: 'UNAUTHORIZED', message: err.message }, 401);
     }
+    if (err.name === 'ForbiddenError') {
+      return errorResponse({ code: 'FORBIDDEN', message: err.message }, 403);
+    }
+    if (err.name === 'SubscriptionLimitError') {
+      return errorResponse({ code: 'SUBSCRIPTION_LIMIT', message: err.message }, 403);
+    }
   }
 
   console.error('Unhandled API error:', err);

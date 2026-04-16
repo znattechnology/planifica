@@ -214,3 +214,76 @@ export function welcomeTemplate(name: string): { subject: string; html: string }
     html,
   };
 }
+
+export function paymentReferenceTemplate(
+  name: string,
+  reference: string,
+  amount: number,
+  expiresAt: Date,
+  confirmationCode: string,
+): { subject: string; html: string } {
+  const firstName = name.split(' ')[0];
+  const formattedAmount = amount.toLocaleString('pt-AO');
+  const formattedExpiry = expiresAt.toLocaleString('pt-AO', {
+    dateStyle: 'full',
+    timeStyle: 'short',
+  });
+  const codeDigits = confirmationCode.split('').map(d => `
+    <td style="width:44px;height:52px;background-color:#1a1a1a;border:2px solid #34D399;border-radius:8px;text-align:center;vertical-align:middle;">
+      <span style="font-size:26px;font-weight:700;color:#34D399;">${d}</span>
+    </td>
+  `).join('<td style="width:8px;"></td>');
+
+  const html = baseLayout(`
+    <h2 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#fafafa;">
+      Referência de Pagamento — PREMIUM
+    </h2>
+    <p style="margin:0 0 20px;font-size:14px;color:#a3a3a3;line-height:1.6;">
+      Olá, <strong style="color:#fafafa;">${firstName}</strong>. O seu pedido de upgrade PREMIUM foi registado.
+      Efectue o pagamento via Multicaixa Express e introduza o código de confirmação abaixo na aplicação para activar o acesso.
+    </p>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#1a1a1a;border:1px solid #262626;border-radius:8px;padding:16px;margin-bottom:16px;">
+      <tr>
+        <td style="padding:8px 0;">
+          <span style="color:#737373;font-size:12px;text-transform:uppercase;letter-spacing:0.05em;">Referência Multicaixa</span><br>
+          <strong style="font-size:22px;letter-spacing:3px;color:#fafafa;font-family:monospace;">${reference}</strong>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:8px 0;border-top:1px solid #262626;">
+          <span style="color:#737373;font-size:12px;text-transform:uppercase;letter-spacing:0.05em;">Montante</span><br>
+          <strong style="font-size:18px;color:#34D399;">${formattedAmount} Kz</strong>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:8px 0;border-top:1px solid #262626;">
+          <span style="color:#737373;font-size:12px;text-transform:uppercase;letter-spacing:0.05em;">Válido até</span><br>
+          <strong style="color:#a3a3a3;font-size:13px;">${formattedExpiry}</strong>
+        </td>
+      </tr>
+    </table>
+    <p style="margin:0 0 12px;font-size:13px;font-weight:600;color:#a3a3a3;text-transform:uppercase;letter-spacing:0.05em;">
+      Código de Confirmação
+    </p>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom:16px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" cellspacing="0" cellpadding="0">
+            <tr>${codeDigits}</tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+    <div style="border-top:1px solid #262626;padding-top:16px;">
+      <p style="margin:0;font-size:12px;color:#525252;line-height:1.6;">
+        Após efectuar o pagamento, introduza este código de 4 dígitos na aplicação Planifica para activar o acesso Premium imediatamente.
+        A referência expira em 24 horas.
+      </p>
+    </div>
+  `);
+
+  return {
+    subject: `${confirmationCode} — Código de activação Premium Planifica`,
+    html,
+  };
+}

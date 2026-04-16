@@ -24,6 +24,7 @@ export class AIPlanGeneratorService implements IAIPlanGeneratorService {
 
     const cacheKey = buildCacheKey(
       'plan',
+      input.calendarId || '_',
       input.type,
       input.dosificacao.id,
       input.subject,
@@ -63,6 +64,7 @@ export class AIPlanGeneratorService implements IAIPlanGeneratorService {
       calendarContext: input.calendarContext,
       siblingPlanSummaries: input.siblingPlanSummaries,
       teachingHistory: input.teachingHistory,
+      adjustedWeekTemplate: input.adjustedWeekTemplate,
     });
 
     const response = await this.aiClient.complete({

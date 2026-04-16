@@ -1,4 +1,6 @@
 import { PrismaPlanRepository } from '@/src/infrastructure/database/repositories/prisma-plan.repository';
+import { PrismaSubscriptionRepository } from '@/src/infrastructure/database/repositories/prisma-subscription.repository';
+import { PrismaPaymentRepository } from '@/src/infrastructure/database/repositories/prisma-payment.repository';
 import { PrismaTeachingActivityRepository } from '@/src/infrastructure/database/repositories/prisma-teaching-activity.repository';
 import { PrismaReportRepository } from '@/src/infrastructure/database/repositories/prisma-report.repository';
 import { PrismaUserRepository } from '@/src/infrastructure/database/repositories/prisma-user.repository';
@@ -11,7 +13,7 @@ import { PrismaLessonRepository } from '@/src/infrastructure/database/repositori
 import { AIClient } from '@/src/ai/services/ai-client';
 import { AIPlanGeneratorService } from '@/src/ai/services/plan-generator.service';
 import { AIReportGeneratorService } from '@/src/ai/services/report-generator.service';
-import { InMemoryCacheService } from '@/src/cache/cache.service';
+import { createCacheService } from '@/src/cache/cache.service';
 import { createLogger } from '@/src/shared/logger/logger';
 import { AuthService } from '@/src/auth/auth.service';
 import { BcryptHashService } from '@/src/infrastructure/services/bcrypt-hash.service';
@@ -44,7 +46,10 @@ import { PlanController } from '@/src/presentation/controllers/plan.controller';
 import { DosificacaoController } from '@/src/presentation/controllers/dosificacao.controller';
 import { ReportController } from '@/src/presentation/controllers/report.controller';
 import { AuthController } from '@/src/presentation/controllers/auth.controller';
+import { SubscriptionController } from '@/src/presentation/controllers/subscription.controller';
 import { IPlanRepository } from '@/src/domain/interfaces/repositories/plan.repository';
+import { ISubscriptionRepository } from '@/src/domain/interfaces/repositories/subscription.repository';
+import { IPaymentRepository } from '@/src/domain/interfaces/repositories/payment.repository';
 import { IDosificacaoRepository } from '@/src/domain/interfaces/repositories/dosificacao.repository';
 import { IUserRepository } from '@/src/domain/interfaces/repositories/user.repository';
 import { ILessonRepository } from '@/src/domain/interfaces/repositories/lesson.repository';
@@ -56,6 +61,31 @@ import { IPasswordChangeTokenRepository } from '@/src/domain/interfaces/reposito
 import { ITeacherProfileRepository } from '@/src/domain/interfaces/repositories/teacher-profile.repository';
 import { ISchoolCalendarRepository } from '@/src/domain/interfaces/repositories/school-calendar.repository';
 import { PrismaSchoolCalendarRepository } from '@/src/infrastructure/database/repositories/prisma-school-calendar.repository';
+import { PrismaCalendarEventTypeConfigRepository } from '@/src/infrastructure/database/repositories/prisma-calendar-event-type-config.repository';
+import { ICalendarEventTypeConfigRepository } from '@/src/domain/interfaces/repositories/calendar-event-type-config.repository';
+import { PrismaSubscriptionPlanConfigRepository } from '@/src/infrastructure/database/repositories/prisma-subscription-plan-config.repository';
+import { ISubscriptionPlanConfigRepository } from '@/src/domain/interfaces/repositories/subscription-plan-config.repository';
+import { ListSubscriptionPlanConfigsUseCase } from '@/src/domain/use-cases/subscription/list-subscription-plan-configs.use-case';
+import { CreateSubscriptionPlanConfigUseCase } from '@/src/domain/use-cases/subscription/create-subscription-plan-config.use-case';
+import { UpdateSubscriptionPlanConfigUseCase } from '@/src/domain/use-cases/subscription/update-subscription-plan-config.use-case';
+import { SubscriptionPlanConfigController } from '@/src/presentation/controllers/subscription-plan-config.controller';
+import { CreateFreeSubscriptionUseCase } from '@/src/domain/use-cases/subscription/create-free-subscription.use-case';
+import { UpgradeToPremiumUseCase } from '@/src/domain/use-cases/subscription/upgrade-to-premium.use-case';
+import { GetSubscriptionStatusUseCase } from '@/src/domain/use-cases/subscription/get-subscription-status.use-case';
+import { GetSubscriptionUsageUseCase } from '@/src/domain/use-cases/subscription/get-subscription-usage.use-case';
+import { ExpireSubscriptionsUseCase } from '@/src/domain/use-cases/subscription/expire-subscriptions.use-case';
+import { ConfirmPaymentUseCase } from '@/src/domain/use-cases/payment/confirm-payment.use-case';
+import { GetPaymentStatusByReferenceUseCase } from '@/src/domain/use-cases/payment/get-payment-status-by-reference.use-case';
+import { ConfirmPaymentByCodeUseCase } from '@/src/domain/use-cases/payment/confirm-payment-by-code.use-case';
+import { FakePaymentProvider } from '@/src/infrastructure/services/fake-payment-provider';
+import { IPaymentProvider } from '@/src/domain/interfaces/services/payment-provider';
+import { SubscriptionAccessMiddleware } from '@/src/presentation/middleware/subscription-access.middleware';
+import { IAuditLogRepository } from '@/src/domain/interfaces/repositories/audit-log.repository';
+import { PrismaAuditLogRepository } from '@/src/infrastructure/database/repositories/prisma-audit-log.repository';
+import { CalendarResolutionService } from '@/src/domain/services/calendar-resolution.service';
+import { CalendarImpactService } from '@/src/domain/services/calendar-impact.service';
+import { CalendarInsightsService } from '@/src/domain/services/calendar-insights.service';
+import { SmartNotificationService } from '@/src/domain/services/smart-notification.service';
 import { ICacheService } from '@/src/domain/interfaces/services/cache.service';
 import { IEmailService } from '@/src/domain/interfaces/services/email.service';
 import { IHashService } from '@/src/domain/interfaces/services/hash.service';
@@ -87,6 +117,11 @@ class Container {
   private _teacherProfileRepository: ITeacherProfileRepository | null = null;
   private _completeOnboardingUseCase: CompleteOnboardingUseCase | null = null;
   private _schoolCalendarRepository: ISchoolCalendarRepository | null = null;
+  private _calendarEventTypeConfigRepository: ICalendarEventTypeConfigRepository | null = null;
+  private _calendarResolutionService: CalendarResolutionService | null = null;
+  private _calendarImpactService: CalendarImpactService | null = null;
+  private _calendarInsightsService: CalendarInsightsService | null = null;
+  private _smartNotificationService: SmartNotificationService | null = null;
   private _createSchoolCalendarUseCase: CreateSchoolCalendarUseCase | null = null;
   private _getSchoolCalendarUseCase: GetSchoolCalendarUseCase | null = null;
   private _manageCalendarEventsUseCase: ManageCalendarEventsUseCase | null = null;
@@ -102,11 +137,32 @@ class Container {
   private _planService: PlanService | null = null;
   private _reportService: ReportService | null = null;
 
+  private _subscriptionRepository: ISubscriptionRepository | null = null;
+  private _paymentRepository: IPaymentRepository | null = null;
+  private _paymentProvider: IPaymentProvider | null = null;
+  private _createFreeSubscriptionUseCase: CreateFreeSubscriptionUseCase | null = null;
+  private _upgradeToPremiumUseCase: UpgradeToPremiumUseCase | null = null;
+  private _getSubscriptionStatusUseCase: GetSubscriptionStatusUseCase | null = null;
+  private _getSubscriptionUsageUseCase: GetSubscriptionUsageUseCase | null = null;
+  private _expireSubscriptionsUseCase: ExpireSubscriptionsUseCase | null = null;
+  private _confirmPaymentUseCase: ConfirmPaymentUseCase | null = null;
+  private _getPaymentStatusByReferenceUseCase: GetPaymentStatusByReferenceUseCase | null = null;
+  private _confirmPaymentByCodeUseCase: ConfirmPaymentByCodeUseCase | null = null;
+  private _subscriptionAccessMiddleware: SubscriptionAccessMiddleware | null = null;
+  private _auditLogRepository: IAuditLogRepository | null = null;
+
+  private _subscriptionPlanConfigRepository: ISubscriptionPlanConfigRepository | null = null;
+  private _listSubscriptionPlanConfigsUseCase: ListSubscriptionPlanConfigsUseCase | null = null;
+  private _createSubscriptionPlanConfigUseCase: CreateSubscriptionPlanConfigUseCase | null = null;
+  private _updateSubscriptionPlanConfigUseCase: UpdateSubscriptionPlanConfigUseCase | null = null;
+
   // --- Controllers ---
   private _planController: PlanController | null = null;
   private _dosificacaoController: DosificacaoController | null = null;
   private _reportController: ReportController | null = null;
   private _authController: AuthController | null = null;
+  private _subscriptionController: SubscriptionController | null = null;
+  private _subscriptionPlanConfigController: SubscriptionPlanConfigController | null = null;
 
   // --- Loggers ---
   private loggers = new Map<string, ILogger>();
@@ -124,7 +180,7 @@ class Container {
 
   get cache(): ICacheService {
     if (!this._cache) {
-      this._cache = new InMemoryCacheService();
+      this._cache = createCacheService();
     }
     return this._cache;
   }
@@ -195,6 +251,50 @@ class Container {
     return this._schoolCalendarRepository;
   }
 
+  get calendarResolutionService(): CalendarResolutionService {
+    if (!this._calendarResolutionService) {
+      this._calendarResolutionService = new CalendarResolutionService(
+        this.schoolCalendarRepository,
+        this.userRepository,
+        this.planRepository,
+        this.cache,
+        this.getLogger('calendar-resolution'),
+      );
+    }
+    return this._calendarResolutionService;
+  }
+
+  get calendarEventTypeConfigRepository(): ICalendarEventTypeConfigRepository {
+    if (!this._calendarEventTypeConfigRepository) {
+      this._calendarEventTypeConfigRepository = new PrismaCalendarEventTypeConfigRepository();
+    }
+    return this._calendarEventTypeConfigRepository;
+  }
+
+  get calendarImpactService(): CalendarImpactService {
+    if (!this._calendarImpactService) {
+      this._calendarImpactService = new CalendarImpactService();
+    }
+    return this._calendarImpactService;
+  }
+
+  get calendarInsightsService(): CalendarInsightsService {
+    if (!this._calendarInsightsService) {
+      this._calendarInsightsService = new CalendarInsightsService(this.calendarImpactService);
+    }
+    return this._calendarInsightsService;
+  }
+
+  get smartNotificationService(): SmartNotificationService {
+    if (!this._smartNotificationService) {
+      this._smartNotificationService = new SmartNotificationService(
+        this.calendarInsightsService,
+        this.calendarResolutionService,
+      );
+    }
+    return this._smartNotificationService;
+  }
+
   get createSchoolCalendarUseCase(): CreateSchoolCalendarUseCase {
     if (!this._createSchoolCalendarUseCase) {
       this._createSchoolCalendarUseCase = new CreateSchoolCalendarUseCase(
@@ -217,6 +317,8 @@ class Container {
     if (!this._manageCalendarEventsUseCase) {
       this._manageCalendarEventsUseCase = new ManageCalendarEventsUseCase(
         this.schoolCalendarRepository,
+        this.cache,
+        this.getLogger('calendar-events'),
       );
     }
     return this._manageCalendarEventsUseCase;
@@ -266,6 +368,165 @@ class Container {
       this._reportRepository = new PrismaReportRepository();
     }
     return this._reportRepository;
+  }
+
+  get subscriptionRepository(): ISubscriptionRepository {
+    if (!this._subscriptionRepository) {
+      this._subscriptionRepository = new PrismaSubscriptionRepository();
+    }
+    return this._subscriptionRepository;
+  }
+
+  get paymentRepository(): IPaymentRepository {
+    if (!this._paymentRepository) {
+      this._paymentRepository = new PrismaPaymentRepository();
+    }
+    return this._paymentRepository;
+  }
+
+  get createFreeSubscriptionUseCase(): CreateFreeSubscriptionUseCase {
+    if (!this._createFreeSubscriptionUseCase) {
+      this._createFreeSubscriptionUseCase = new CreateFreeSubscriptionUseCase(
+        this.subscriptionRepository,
+      );
+    }
+    return this._createFreeSubscriptionUseCase;
+  }
+
+  get paymentProvider(): IPaymentProvider {
+    if (!this._paymentProvider) {
+      this._paymentProvider = new FakePaymentProvider(this.paymentRepository);
+    }
+    return this._paymentProvider;
+  }
+
+  get upgradeToPremiumUseCase(): UpgradeToPremiumUseCase {
+    if (!this._upgradeToPremiumUseCase) {
+      this._upgradeToPremiumUseCase = new UpgradeToPremiumUseCase(
+        this.subscriptionRepository,
+        this.paymentRepository,
+        this.userRepository,
+        this.emailService,
+        this.paymentProvider,
+        this.subscriptionPlanConfigRepository,
+      );
+    }
+    return this._upgradeToPremiumUseCase;
+  }
+
+  get getSubscriptionStatusUseCase(): GetSubscriptionStatusUseCase {
+    if (!this._getSubscriptionStatusUseCase) {
+      this._getSubscriptionStatusUseCase = new GetSubscriptionStatusUseCase(
+        this.subscriptionRepository,
+        this.paymentRepository,
+      );
+    }
+    return this._getSubscriptionStatusUseCase;
+  }
+
+  get getSubscriptionUsageUseCase(): GetSubscriptionUsageUseCase {
+    if (!this._getSubscriptionUsageUseCase) {
+      this._getSubscriptionUsageUseCase = new GetSubscriptionUsageUseCase(
+        this.subscriptionRepository,
+        this.planRepository,
+        this.subscriptionPlanConfigRepository,
+      );
+    }
+    return this._getSubscriptionUsageUseCase;
+  }
+
+  get expireSubscriptionsUseCase(): ExpireSubscriptionsUseCase {
+    if (!this._expireSubscriptionsUseCase) {
+      this._expireSubscriptionsUseCase = new ExpireSubscriptionsUseCase(
+        this.subscriptionRepository,
+        this.paymentRepository,
+      );
+    }
+    return this._expireSubscriptionsUseCase;
+  }
+
+  get auditLogRepository(): IAuditLogRepository {
+    if (!this._auditLogRepository) {
+      this._auditLogRepository = new PrismaAuditLogRepository();
+    }
+    return this._auditLogRepository;
+  }
+
+  get subscriptionPlanConfigRepository(): ISubscriptionPlanConfigRepository {
+    if (!this._subscriptionPlanConfigRepository) {
+      this._subscriptionPlanConfigRepository = new PrismaSubscriptionPlanConfigRepository();
+    }
+    return this._subscriptionPlanConfigRepository;
+  }
+
+  get listSubscriptionPlanConfigsUseCase(): ListSubscriptionPlanConfigsUseCase {
+    if (!this._listSubscriptionPlanConfigsUseCase) {
+      this._listSubscriptionPlanConfigsUseCase = new ListSubscriptionPlanConfigsUseCase(
+        this.subscriptionPlanConfigRepository,
+      );
+    }
+    return this._listSubscriptionPlanConfigsUseCase;
+  }
+
+  get createSubscriptionPlanConfigUseCase(): CreateSubscriptionPlanConfigUseCase {
+    if (!this._createSubscriptionPlanConfigUseCase) {
+      this._createSubscriptionPlanConfigUseCase = new CreateSubscriptionPlanConfigUseCase(
+        this.subscriptionPlanConfigRepository,
+      );
+    }
+    return this._createSubscriptionPlanConfigUseCase;
+  }
+
+  get updateSubscriptionPlanConfigUseCase(): UpdateSubscriptionPlanConfigUseCase {
+    if (!this._updateSubscriptionPlanConfigUseCase) {
+      this._updateSubscriptionPlanConfigUseCase = new UpdateSubscriptionPlanConfigUseCase(
+        this.subscriptionPlanConfigRepository,
+      );
+    }
+    return this._updateSubscriptionPlanConfigUseCase;
+  }
+
+  get confirmPaymentUseCase(): ConfirmPaymentUseCase {
+    if (!this._confirmPaymentUseCase) {
+      this._confirmPaymentUseCase = new ConfirmPaymentUseCase(
+        this.paymentRepository,
+        this.subscriptionRepository,
+        this.auditLogRepository,
+        this.subscriptionPlanConfigRepository,
+      );
+    }
+    return this._confirmPaymentUseCase;
+  }
+
+  get getPaymentStatusByReferenceUseCase(): GetPaymentStatusByReferenceUseCase {
+    if (!this._getPaymentStatusByReferenceUseCase) {
+      this._getPaymentStatusByReferenceUseCase = new GetPaymentStatusByReferenceUseCase(
+        this.paymentRepository,
+      );
+    }
+    return this._getPaymentStatusByReferenceUseCase;
+  }
+
+  get confirmPaymentByCodeUseCase(): ConfirmPaymentByCodeUseCase {
+    if (!this._confirmPaymentByCodeUseCase) {
+      this._confirmPaymentByCodeUseCase = new ConfirmPaymentByCodeUseCase(
+        this.paymentRepository,
+        this.confirmPaymentUseCase,
+        this.getLogger('confirm-payment-by-code'),
+      );
+    }
+    return this._confirmPaymentByCodeUseCase;
+  }
+
+  get subscriptionAccessMiddleware(): SubscriptionAccessMiddleware {
+    if (!this._subscriptionAccessMiddleware) {
+      this._subscriptionAccessMiddleware = new SubscriptionAccessMiddleware(
+        this.subscriptionRepository,
+        this.planRepository,
+        this.subscriptionPlanConfigRepository,
+      );
+    }
+    return this._subscriptionAccessMiddleware;
   }
 
   get aiClient(): AIClient {
@@ -321,11 +582,13 @@ class Container {
         this.schoolCalendarRepository,
         this.lessonRepository,
         this.teachingActivityRepository,
+        this.calendarResolutionService,
+        this.calendarImpactService,
       );
       const getUseCase = new GetPlansUseCase(this.planRepository);
       const updateUseCase = new UpdatePlanUseCase(this.planRepository, this.cache);
 
-      this._planService = new PlanService(generateUseCase, getUseCase, updateUseCase);
+      this._planService = new PlanService(generateUseCase, getUseCase, updateUseCase, this.schoolCalendarRepository);
     }
     return this._planService;
   }
@@ -344,6 +607,7 @@ class Container {
         this.aiReportGenerator,
         this.getLogger('trimester-report'),
         this.schoolCalendarRepository,
+        this.calendarResolutionService,
       );
 
       const annualUseCase = new GenerateAnnualReportUseCase(
@@ -373,6 +637,7 @@ class Container {
         this.planService,
         this.authService,
         this.getLogger('plan-controller'),
+        this.subscriptionAccessMiddleware,
       );
     }
     return this._planController;
@@ -402,6 +667,7 @@ class Container {
         this.emailService,
         this.emailVerificationTokenRepository,
         this.jwtService,
+        this.subscriptionRepository,
       );
       const refreshTokenUseCase = new RefreshTokenUseCase(
         this.userRepository,
@@ -426,6 +692,7 @@ class Container {
         this.emailVerificationTokenRepository,
         this.emailService,
         this.jwtService,
+        this.subscriptionRepository,
       );
       const resendVerificationCodeUseCase = new ResendVerificationCodeUseCase(
         this.userRepository,
@@ -468,9 +735,46 @@ class Container {
         this.reportService,
         this.authService,
         this.getLogger('report-controller'),
+        this.subscriptionAccessMiddleware,
       );
     }
     return this._reportController;
+  }
+
+  get subscriptionController(): SubscriptionController {
+    if (!this._subscriptionController) {
+      this._subscriptionController = new SubscriptionController(
+        this.authService,
+        this.upgradeToPremiumUseCase,
+        this.getSubscriptionStatusUseCase,
+        this.getSubscriptionUsageUseCase,
+        this.confirmPaymentUseCase,
+        this.expireSubscriptionsUseCase,
+        this.subscriptionRepository,
+        this.paymentRepository,
+        this.getLogger('subscription-controller'),
+        this.userRepository,
+        this.emailService,
+        this.auditLogRepository,
+        this.getPaymentStatusByReferenceUseCase,
+        this.confirmPaymentByCodeUseCase,
+        this.subscriptionPlanConfigRepository,
+      );
+    }
+    return this._subscriptionController;
+  }
+
+  get subscriptionPlanConfigController(): SubscriptionPlanConfigController {
+    if (!this._subscriptionPlanConfigController) {
+      this._subscriptionPlanConfigController = new SubscriptionPlanConfigController(
+        this.authService,
+        this.listSubscriptionPlanConfigsUseCase,
+        this.createSubscriptionPlanConfigUseCase,
+        this.updateSubscriptionPlanConfigUseCase,
+        this.getLogger('subscription-plan-config-controller'),
+      );
+    }
+    return this._subscriptionPlanConfigController;
   }
 
   // ==========================================
@@ -501,6 +805,11 @@ class Container {
     this._teacherProfileRepository = null;
     this._completeOnboardingUseCase = null;
     this._schoolCalendarRepository = null;
+    this._calendarResolutionService = null;
+    this._calendarImpactService = null;
+    this._calendarInsightsService = null;
+    this._smartNotificationService = null;
+    this._calendarEventTypeConfigRepository = null;
     this._createSchoolCalendarUseCase = null;
     this._getSchoolCalendarUseCase = null;
     this._manageCalendarEventsUseCase = null;
@@ -511,6 +820,25 @@ class Container {
     this._dosificacaoController = null;
     this._reportController = null;
     this._authController = null;
+    this._subscriptionRepository = null;
+    this._paymentRepository = null;
+    this._paymentProvider = null;
+    this._createFreeSubscriptionUseCase = null;
+    this._upgradeToPremiumUseCase = null;
+    this._getSubscriptionStatusUseCase = null;
+    this._getSubscriptionUsageUseCase = null;
+    this._expireSubscriptionsUseCase = null;
+    this._confirmPaymentUseCase = null;
+    this._subscriptionAccessMiddleware = null;
+    this._subscriptionController = null;
+    this._auditLogRepository = null;
+    this._getPaymentStatusByReferenceUseCase = null;
+    this._confirmPaymentByCodeUseCase = null;
+    this._subscriptionPlanConfigRepository = null;
+    this._listSubscriptionPlanConfigsUseCase = null;
+    this._createSubscriptionPlanConfigUseCase = null;
+    this._updateSubscriptionPlanConfigUseCase = null;
+    this._subscriptionPlanConfigController = null;
     this.loggers.clear();
   }
 }

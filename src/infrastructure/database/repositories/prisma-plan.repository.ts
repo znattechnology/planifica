@@ -81,4 +81,10 @@ export class PrismaPlanRepository implements IPlanRepository {
     ]);
     return buildPaginatedResult(plans as unknown as Plan[], total, page, limit);
   }
+
+  async countByUserIdSince(userId: string, since: Date): Promise<number> {
+    return prisma.plan.count({
+      where: { userId, createdAt: { gte: since } },
+    });
+  }
 }

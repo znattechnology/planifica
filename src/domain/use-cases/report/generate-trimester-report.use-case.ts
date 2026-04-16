@@ -2,6 +2,7 @@ import { Report, ReportType, ReportStatus } from '@/src/domain/entities/report.e
 import { IReportRepository } from '@/src/domain/interfaces/repositories/report.repository';
 import { IPlanRepository } from '@/src/domain/interfaces/repositories/plan.repository';
 import { ISchoolCalendarRepository } from '@/src/domain/interfaces/repositories/school-calendar.repository';
+import { CalendarResolutionService } from '@/src/domain/services/calendar-resolution.service';
 import { IAIReportGeneratorService } from '@/src/domain/interfaces/services/report-generator.service';
 import { AggregateActivitiesUseCase } from './aggregate-activities.use-case';
 import { PlanType } from '@/src/domain/entities/plan.entity';
@@ -17,6 +18,8 @@ export interface GenerateTrimesterReportInput {
 }
 
 export class GenerateTrimesterReportUseCase {
+  private readonly calendarResolution: CalendarResolutionService;
+
   constructor(
     private readonly reportRepository: IReportRepository,
     private readonly planRepository: IPlanRepository,
@@ -24,7 +27,13 @@ export class GenerateTrimesterReportUseCase {
     private readonly aiReportGenerator: IAIReportGeneratorService,
     private readonly logger: ILogger,
     private readonly schoolCalendarRepository: ISchoolCalendarRepository,
-  ) {}
+    calendarResolution?: CalendarResolutionService,
+  ) {
+    this.calendarResolution = calendarResolution || new CalendarResolutionService(
+      schoolCalendarRepository,
+      { findById: async () => null } as unknown as import('@/src/domain/interfaces/repositories/user.repository').IUserRepository,
+    );
+  }
 
   async execute(input: GenerateTrimesterReportInput): Promise<Report> {
     const year = parseInt(input.academicYear.split('/')[0] || input.academicYear, 10);
@@ -133,9 +142,9 @@ export class GenerateTrimesterReportUseCase {
     year: number,
     trimester: number,
   ): Promise<{ startDate: Date; endDate: Date }> {
-    // Try real calendar first
+    // Try resolved calendar first (respects user's selected calendar)
     try {
-      const calendar = await this.schoolCalendarRepository.findByUserAndYear(userId, academicYear);
+      const calendar = await this.calendarResolution.resolve(userId, academicYear);
       if (calendar) {
         const term = calendar.terms.find(t => t.trimester === trimester);
         if (term) {

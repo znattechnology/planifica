@@ -29,6 +29,17 @@ export interface FocusWeekData {
   totalWeeksInParent: number;
 }
 
+export interface AdjustedWeekInfo {
+  weekNumber: number;
+  weekStart: string;
+  weekEnd: string;
+  adjustedLessons: number;
+  isNonTeaching: boolean;
+  isReviewWeek: boolean;  // week before an exam — include revision content
+  isExamWeek: boolean;    // exam/assessment week — no new content
+  impactSummary: string;
+}
+
 export interface GeneratePlanInput {
   type: PlanType;
   dosificacao: Dosificacao;
@@ -39,9 +50,11 @@ export interface GeneratePlanInput {
   parentPlanContent?: PlanContent;
   focusWeekData?: FocusWeekData;
   additionalContext?: string;
+  calendarId?: string;
   calendarContext?: CalendarContext;
   siblingPlanSummaries?: SiblingPlanSummary[];
   teachingHistory?: string; // pre-built feedback summary from TeachingHistoryService
+  adjustedWeekTemplate?: AdjustedWeekInfo[];
 }
 
 export interface IAIPlanGeneratorService {

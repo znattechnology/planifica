@@ -7,6 +7,7 @@ export interface User {
   role: UserRole;
   school?: string;
   subject?: string;
+  selectedCalendarId?: string;
   createdAt: Date;
   updatedAt: Date;
 }

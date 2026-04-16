@@ -3,21 +3,12 @@ import { container } from '@/src/main/container';
 import { handleApiError } from '@/src/shared/lib/api-response';
 import { getAccessToken } from '@/src/shared/lib/auth-cookies';
 import { PlanQualityService } from '@/src/ai/services/plan-quality.service';
-import type { CalendarContext } from '@/src/domain/interfaces/services/ai-plan-generator.service';
+import { resolveCalendarContextWithMetadata } from '@/src/shared/utils/calendar-context';
 
 /**
  * GET /api/plans/insights?planId=xxx
  *
  * Returns quality scores and human-readable insights for a plan.
- *
- * Response:
- * {
- *   coherenceScore: number,
- *   workloadBalanceScore: number,
- *   calendarAlignmentScore: number,
- *   overallScore: number,
- *   insights: { type: "success"|"warning"|"error", message: string }[]
- * }
  */
 export async function GET(request: NextRequest) {
   try {
@@ -49,57 +40,18 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // If we already have cached quality scores and they're recent (< 1 hour), return them
-    if (plan.qualityScores) {
-      const evaluatedAt = new Date(plan.qualityScores.evaluatedAt);
-      const ageMs = Date.now() - evaluatedAt.getTime();
-      if (ageMs < 3600_000) {
-        // Re-evaluate to get insights (scores are cached but insights aren't in DB)
-        const qualityService = new PlanQualityService();
-        const siblingPlans = await container.planRepository.findByDosificacaoId(plan.dosificacaoId);
-        const siblings = siblingPlans.filter(p => p.id !== plan.id && p.type === plan.type);
-        const parentPlan = plan.parentPlanId
-          ? await container.planRepository.findById(plan.parentPlanId)
-          : undefined;
+    // Resolve calendar with metadata
+    const { calendarContext, calendarInfo, fallbackUsed } = await resolveCalendarContextWithMetadata(
+      user.id, plan.academicYear,
+      container.calendarResolutionService,
+    );
 
-        let calendarContext: CalendarContext | undefined;
-        try {
-          const calendar = await container.schoolCalendarRepository.findByUserAndYear(
-            user.id, plan.academicYear,
-          );
-          if (calendar) {
-            calendarContext = {
-              terms: calendar.terms.map(t => ({
-                trimester: t.trimester,
-                startDate: t.startDate.toISOString().split('T')[0],
-                endDate: t.endDate.toISOString().split('T')[0],
-                teachingWeeks: t.teachingWeeks,
-              })),
-              events: calendar.events.map(e => ({
-                title: e.title,
-                startDate: e.startDate.toISOString().split('T')[0],
-                endDate: e.endDate.toISOString().split('T')[0],
-                type: e.type,
-              })),
-            };
-          }
-        } catch { /* proceed without */ }
-
-        const report = qualityService.evaluate(
-          plan, siblings, parentPlan || undefined, calendarContext,
-        );
-
-        return NextResponse.json({
-          success: true,
-          data: {
-            ...report.scores,
-            insights: report.insights,
-          },
-        });
-      }
+    // Check if plan is outdated
+    let isOutdated = false;
+    if (calendarInfo && plan.calendarId && plan.calendarVersion) {
+      isOutdated = plan.calendarVersion !== calendarInfo.version && plan.calendarId === calendarInfo.id;
     }
 
-    // Full evaluation
     const qualityService = new PlanQualityService();
     const siblingPlans = await container.planRepository.findByDosificacaoId(plan.dosificacaoId);
     const siblings = siblingPlans.filter(p => p.id !== plan.id && p.type === plan.type);
@@ -107,39 +59,18 @@ export async function GET(request: NextRequest) {
       ? await container.planRepository.findById(plan.parentPlanId)
       : undefined;
 
-    let calendarContext: CalendarContext | undefined;
-    try {
-      const calendar = await container.schoolCalendarRepository.findByUserAndYear(
-        user.id, plan.academicYear,
-      );
-      if (calendar) {
-        calendarContext = {
-          terms: calendar.terms.map(t => ({
-            trimester: t.trimester,
-            startDate: t.startDate.toISOString().split('T')[0],
-            endDate: t.endDate.toISOString().split('T')[0],
-            teachingWeeks: t.teachingWeeks,
-          })),
-          events: calendar.events.map(e => ({
-            title: e.title,
-            startDate: e.startDate.toISOString().split('T')[0],
-            endDate: e.endDate.toISOString().split('T')[0],
-            type: e.type,
-          })),
-        };
-      }
-    } catch { /* proceed without */ }
-
     const report = qualityService.evaluate(
       plan, siblings, parentPlan || undefined, calendarContext,
     );
 
-    // Persist scores for caching
-    try {
-      await container.planRepository.update(plan.id, {
-        qualityScores: report.scores,
-      } as never);
-    } catch { /* non-critical */ }
+    // Persist scores for caching (non-critical)
+    if (!plan.qualityScores || hasScoresChanged(plan.qualityScores, report.scores)) {
+      try {
+        await container.planRepository.update(plan.id, {
+          qualityScores: report.scores,
+        } as never);
+      } catch { /* non-critical */ }
+    }
 
     return NextResponse.json({
       success: true,
@@ -147,8 +78,18 @@ export async function GET(request: NextRequest) {
         ...report.scores,
         insights: report.insights,
       },
+      calendar: calendarInfo ? { ...calendarInfo, fallbackUsed } : undefined,
+      isOutdated,
     });
   } catch (err) {
     return handleApiError(err);
   }
+}
+
+function hasScoresChanged(
+  existing: { overallScore: number; evaluatedAt: string },
+  updated: { overallScore: number },
+): boolean {
+  const ageMs = Date.now() - new Date(existing.evaluatedAt).getTime();
+  return ageMs >= 3600_000 || existing.overallScore !== updated.overallScore;
 }

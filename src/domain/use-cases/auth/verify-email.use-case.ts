@@ -2,7 +2,9 @@ import { IUserRepository } from '@/src/domain/interfaces/repositories/user.repos
 import { IEmailVerificationTokenRepository } from '@/src/domain/interfaces/repositories/email-verification-token.repository';
 import { IEmailService } from '@/src/domain/interfaces/services/email.service';
 import { IJwtService, TokenPair, JwtPayload } from '@/src/domain/interfaces/services/jwt.service';
+import { ISubscriptionRepository } from '@/src/domain/interfaces/repositories/subscription.repository';
 import { User } from '@/src/domain/entities/user.entity';
+import { SubscriptionPlan, SubscriptionStatus, FREE_SUBSCRIPTION_END } from '@/src/domain/entities/subscription.entity';
 import { ValidationError, UnauthorizedError } from '@/src/domain/errors/domain.error';
 
 export interface VerifyEmailOutput {
@@ -16,6 +18,7 @@ export class VerifyEmailUseCase {
     private readonly tokenRepository: IEmailVerificationTokenRepository,
     private readonly emailService: IEmailService,
     private readonly jwtService: IJwtService,
+    private readonly subscriptionRepository: ISubscriptionRepository,
   ) {}
 
   async execute(userId: string, code: string): Promise<VerifyEmailOutput> {
@@ -43,6 +46,20 @@ export class VerifyEmailUseCase {
 
     await this.tokenRepository.markAsUsed(token.id);
     await this.userRepository.update(userId, { emailVerified: true });
+
+    // Provision FREE subscription — idempotent: only create if the user has none yet.
+    // This is the single source of truth for subscription creation on new accounts.
+    const existing = await this.subscriptionRepository.findActiveByUserId(userId);
+    if (!existing) {
+      const now = new Date();
+      await this.subscriptionRepository.create({
+        userId,
+        plan: SubscriptionPlan.FREE,
+        status: SubscriptionStatus.ACTIVE,
+        startDate: now,
+        endDate: FREE_SUBSCRIPTION_END,
+      });
+    }
 
     // Send welcome email (non-blocking)
     this.emailService.sendWelcomeEmail(user.email, user.name).catch(() => {});

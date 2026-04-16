@@ -16,6 +16,8 @@ import {
   CalendarDays,
   CalendarRange,
   Shield,
+  CreditCard,
+  Crown,
 } from 'lucide-react'
 import { Button } from '@/src/ui/components/ui/button'
 import { Badge } from '@/src/ui/components/ui/badge'
@@ -175,7 +177,7 @@ export default function AdminPage() {
       </div>
 
       {/* Quick Links */}
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <Link
           href={ROUTES.ADMIN_TEACHERS}
           className="group flex items-center gap-4 rounded-xl border border-border/40 bg-card/50 p-5 hover:border-accent/20 transition-colors"
@@ -200,6 +202,48 @@ export default function AdminPage() {
           <div className="flex-1">
             <h3 className="text-sm font-semibold">Todos os Planos</h3>
             <p className="text-xs text-muted-foreground">Ver, filtrar e aprovar planos de todos os professores</p>
+          </div>
+          <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-accent transition-colors" />
+        </Link>
+
+        <Link
+          href={ROUTES.ADMIN_CALENDARS}
+          className="group flex items-center gap-4 rounded-xl border border-border/40 bg-card/50 p-5 hover:border-accent/20 transition-colors"
+        >
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-accent/10">
+            <CalendarDays className="h-6 w-6 text-accent" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-sm font-semibold">Calendários Escolares</h3>
+            <p className="text-xs text-muted-foreground">Gerir calendários ministeriais e escolares</p>
+          </div>
+          <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-accent transition-colors" />
+        </Link>
+
+        <Link
+          href={ROUTES.ADMIN_PAYMENTS}
+          className="group flex items-center gap-4 rounded-xl border border-yellow-500/20 bg-yellow-500/5 p-5 hover:border-yellow-500/30 transition-colors"
+        >
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-yellow-500/10">
+            <CreditCard className="h-6 w-6 text-yellow-500" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-sm font-semibold">Pagamentos</h3>
+            <p className="text-xs text-muted-foreground">Confirmar pagamentos e activar subscrições</p>
+          </div>
+          <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-yellow-500 transition-colors" />
+        </Link>
+
+        <Link
+          href={ROUTES.ADMIN_SUBSCRIPTIONS}
+          className="group flex items-center gap-4 rounded-xl border border-accent/20 bg-accent/5 p-5 hover:border-accent/30 transition-colors"
+        >
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-accent/10">
+            <Crown className="h-6 w-6 text-accent" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-sm font-semibold">Subscrições</h3>
+            <p className="text-xs text-muted-foreground">Ver planos FREE e Premium de todos os utilizadores</p>
           </div>
           <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-accent transition-colors" />
         </Link>

@@ -24,10 +24,18 @@ import {
   Sparkles,
   ChevronLeft,
   Plus,
+  CreditCard,
+  Crown,
+  Star,
+  Settings2,
 } from 'lucide-react'
 import { Button } from '@/src/ui/components/ui/button'
 import { cn } from '@/src/shared/lib/utils'
-import { ROUTES } from '@/src/shared/constants/routes.constants'
+import { ROUTES, API_ROUTES } from '@/src/shared/constants/routes.constants'
+import { UpgradeBanner } from '@/src/ui/components/subscription/upgrade-banner'
+import { PaymentModal } from '@/src/ui/components/subscription/payment-modal'
+import { fetchWithAuth } from '@/src/shared/lib/fetch-with-auth'
+import { useSubscription } from '@/src/ui/providers/subscription-provider'
 
 interface DashboardLayoutProps {
   children: ReactNode
@@ -81,6 +89,11 @@ const NAV_ITEMS: NavItem[] = [
     href: ROUTES.REPORTS,
     icon: BarChart3,
   },
+  {
+    label: 'Subscrição',
+    href: ROUTES.SUBSCRIPTION,
+    icon: Star,
+  },
 ]
 
 const ADMIN_NAV_ITEMS: NavItem[] = [
@@ -90,6 +103,10 @@ const ADMIN_NAV_ITEMS: NavItem[] = [
       { label: 'Painel Admin', href: ROUTES.ADMIN, icon: Shield },
       { label: 'Professores', href: ROUTES.ADMIN_TEACHERS, icon: Users },
       { label: 'Todos os Planos', href: ROUTES.ADMIN_PLANS, icon: BarChart3 },
+      { label: 'Calendários', href: ROUTES.ADMIN_CALENDARS, icon: CalendarDays },
+      { label: 'Pagamentos', href: ROUTES.ADMIN_PAYMENTS, icon: CreditCard },
+      { label: 'Subscrições', href: ROUTES.ADMIN_SUBSCRIPTIONS, icon: Crown },
+      { label: 'Planos de Subscrição', href: ROUTES.ADMIN_SUBSCRIPTION_PLANS, icon: Settings2 },
     ],
   },
 ]
@@ -102,8 +119,26 @@ const BOTTOM_ITEMS = [
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
+  const [upgradeModal, setUpgradeModal] = useState<{
+    reference: string; amount: number; expiresAt: string
+  } | null>(null)
   const pathname = usePathname()
   const { logout, user } = useAuth()
+  const { refresh: refreshSubscription } = useSubscription()
+
+  async function handleBannerUpgrade() {
+    try {
+      const res = await fetchWithAuth(API_ROUTES.SUBSCRIPTIONS_UPGRADE, { method: 'POST' })
+      const data = await res.json()
+      if (data.success) {
+        const { payment } = data.data as { payment: { reference: string; amount: number; expiresAt: string } }
+        setUpgradeModal({ reference: payment.reference, amount: payment.amount, expiresAt: payment.expiresAt })
+        await refreshSubscription()
+      }
+    } catch {
+      // user can upgrade from the dashboard card
+    }
+  }
 
   const isAdminOrCoordinator = user?.role === 'ADMIN' || user?.role === 'COORDINATOR'
   const navItems = isAdminOrCoordinator ? [...NAV_ITEMS, ...ADMIN_NAV_ITEMS] : NAV_ITEMS
@@ -248,6 +283,16 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         </div>
       </aside>
 
+      {/* Upgrade modal (triggered from banner) */}
+      {upgradeModal && (
+        <PaymentModal
+          reference={upgradeModal.reference}
+          amount={upgradeModal.amount}
+          expiresAt={upgradeModal.expiresAt}
+          onClose={() => setUpgradeModal(null)}
+        />
+      )}
+
       {/* Main Area */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Top Header */}
@@ -276,6 +321,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             </div>
           </div>
         </header>
+
+        {/* Upgrade Banner — contextual, between header and page content */}
+        <UpgradeBanner onUpgradeClick={handleBannerUpgrade} />
 
         {/* Page Content */}
         <main className="flex-1 overflow-y-auto">

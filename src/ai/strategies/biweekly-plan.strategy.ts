@@ -3,7 +3,9 @@ import { SYSTEM_PROMPTS } from '@/src/ai/prompts/system-prompts';
 import { AIMessage } from '@/src/ai/types/ai.types';
 import { IPlanGenerationStrategy, PlanGenerationContext } from './plan-generation.strategy';
 import { sanitizePromptInput } from '@/src/shared/lib/sanitize-prompt';
+import { sanitizeDosificacaoContent, slimDosificacaoContent, DOS_CONTENT_MAX_CHARS } from '@/src/shared/lib/sanitize-dosificacao';
 import { biweeklyPlanResponseSchema } from '@/src/ai/schemas/plan-response.schema';
+import { buildCalendarInstructions } from '@/src/ai/builders/calendar-instruction.builder';
 
 export class BiweeklyPlanStrategy implements IPlanGenerationStrategy {
   readonly type = PlanType.BIWEEKLY;
@@ -12,9 +14,9 @@ export class BiweeklyPlanStrategy implements IPlanGenerationStrategy {
     const systemPrompt = `${SYSTEM_PROMPTS.PLAN_GENERATOR}\n\n${SYSTEM_PROMPTS.BIWEEKLY_PLAN}`;
 
     const parts = [
-      `Disciplina: ${context.subject}`,
-      `Classe: ${context.grade}`,
-      `Ano Lectivo: ${context.dosificacao.academicYear}`,
+      `Disciplina: ${sanitizePromptInput(context.subject)}`,
+      `Classe: ${sanitizePromptInput(context.grade)}`,
+      `Ano Lectivo: ${sanitizePromptInput(context.dosificacao.academicYear)}`,
     ];
 
     if (context.trimester) parts.push(`Trimestre: ${context.trimester}º`);
@@ -28,9 +30,9 @@ export class BiweeklyPlanStrategy implements IPlanGenerationStrategy {
       parts.push('');
       context.focusWeekData.weeks.forEach(w => {
         parts.push(`Semana ${w.week}${w.period ? ` (${w.period})` : ''}:`);
-        parts.push(`  Unidade: ${w.unit}`);
-        parts.push(`  Objectivos: ${w.objectives}`);
-        parts.push(`  Conteúdos: ${w.contents}`);
+        parts.push(`  Unidade: ${sanitizePromptInput(w.unit)}`);
+        parts.push(`  Objectivos: ${sanitizePromptInput(w.objectives)}`);
+        parts.push(`  Conteúdos: ${sanitizePromptInput(w.contents)}`);
         parts.push(`  Nº aulas: ${w.numLessons}`);
         parts.push('');
       });
@@ -45,7 +47,14 @@ export class BiweeklyPlanStrategy implements IPlanGenerationStrategy {
 
     // Dosificação as tertiary reference
     parts.push('', '══ Dosificação (referência) ══');
-    parts.push(JSON.stringify(context.dosificacao.content, null, 2));
+    const sanitizedDosBiweekly = sanitizeDosificacaoContent(context.dosificacao.content);
+    const dosJsonBiweekly = JSON.stringify(sanitizedDosBiweekly, null, 2);
+    if (dosJsonBiweekly.length > DOS_CONTENT_MAX_CHARS) {
+      parts.push(JSON.stringify(slimDosificacaoContent(sanitizedDosBiweekly), null, 2));
+      parts.push('[NOTA] Dosificação comprimida — apenas campos essenciais incluídos por excesso de conteúdo.');
+    } else {
+      parts.push(dosJsonBiweekly);
+    }
 
     // Calendar context
     if (context.calendarContext) {
@@ -58,9 +67,15 @@ export class BiweeklyPlanStrategy implements IPlanGenerationStrategy {
       if (events.length > 0) {
         parts.push('Feriados:');
         events.forEach(e => {
-          parts.push(`- ${e.title}: ${e.startDate} a ${e.endDate}`);
+          parts.push(`- ${sanitizePromptInput(e.title)}: ${e.startDate} a ${e.endDate}`);
         });
         parts.push('NÃO agendar aulas nestas datas.');
+      }
+
+      // Smart calendar instructions for AI
+      const calendarInstructions = buildCalendarInstructions(context.calendarContext, context.trimester);
+      if (calendarInstructions) {
+        parts.push(calendarInstructions);
       }
     }
 
@@ -73,9 +88,9 @@ export class BiweeklyPlanStrategy implements IPlanGenerationStrategy {
       parts.push('Garante continuidade e progressão.');
     }
 
-    // Teaching history — adaptive pacing
+    // Teaching history — adaptive pacing (sanitized: re-injected from stored DB content)
     if (context.teachingHistory) {
-      parts.push('', context.teachingHistory);
+      parts.push('', sanitizePromptInput(context.teachingHistory));
     }
 
     if (context.additionalContext) {
@@ -102,16 +117,37 @@ export class BiweeklyPlanStrategy implements IPlanGenerationStrategy {
   }
 
   parseResponse(raw: string): PlanContent {
-    const parsed = biweeklyPlanResponseSchema.parse(JSON.parse(raw));
-    return {
-      generalObjectives: parsed.generalObjectives.length > 0 ? parsed.generalObjectives : (parsed.objectives || []),
-      specificObjectives: parsed.specificObjectives,
-      competencies: parsed.competencies,
-      topics: parsed.topics,
-      methodology: parsed.methodology,
-      resources: parsed.resources,
-      assessment: parsed.assessment,
-      rawAIOutput: raw,
-    };
+    try {
+      const parsed = biweeklyPlanResponseSchema.parse(JSON.parse(raw));
+      return {
+        generalObjectives: parsed.generalObjectives.length > 0 ? parsed.generalObjectives : (parsed.objectives || []),
+        specificObjectives: parsed.specificObjectives,
+        competencies: parsed.competencies,
+        topics: (parsed.topics ?? []).filter(t => t.title.trim().length > 0),
+        methodology: parsed.methodology,
+        resources: parsed.resources,
+        assessment: parsed.assessment,
+        rawAIOutput: raw,
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+      const isLikelyTruncated = raw.length > 500 && !/[}\]]\s*$/.test(raw.trimEnd());
+      return {
+        generalObjectives: [],
+        specificObjectives: [],
+        competencies: [],
+        topics: [],
+        criticalNotes: isLikelyTruncated
+          ? 'Plano extenso para processamento.'
+          : `Erro ao processar resposta da IA: ${errorMessage.substring(0, 500)}`,
+        suggestions: isLikelyTruncated
+          ? [
+              'Reduza os conteúdos do plano trimestral pai',
+              'Gere planos quinzenais com menos semanas por vez',
+            ]
+          : undefined,
+        rawAIOutput: raw,
+      };
+    }
   }
 }

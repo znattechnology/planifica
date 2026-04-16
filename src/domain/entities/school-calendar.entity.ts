@@ -1,3 +1,8 @@
+export enum CalendarType {
+  MINISTERIAL = 'MINISTERIAL',
+  SCHOOL = 'SCHOOL',
+}
+
 export enum CalendarEventType {
   NATIONAL_HOLIDAY = 'NATIONAL_HOLIDAY',
   SCHOOL_HOLIDAY = 'SCHOOL_HOLIDAY',
@@ -28,8 +33,13 @@ export interface CalendarEvent {
   startDate: Date;
   endDate: Date;
   type: CalendarEventType;
+  typeConfigId?: string;
+  color?: string;
   allDay: boolean;
   createdAt: Date;
+  createdBy?: string;
+  updatedBy?: string;
+  updatedAt?: Date;
 }
 
 export interface SchoolCalendar {
@@ -38,6 +48,10 @@ export interface SchoolCalendar {
   academicYear: string;
   country: string;
   schoolName?: string;
+  type: CalendarType;
+  schoolId?: string;
+  isActive: boolean;
+  version: number;
   startDate: Date;
   endDate: Date;
   terms: CalendarTerm[];

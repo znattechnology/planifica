@@ -1,4 +1,4 @@
-import { IEmailService } from '@/src/domain/interfaces/services/email.service';
+import { IEmailService, PaymentEmailData } from '@/src/domain/interfaces/services/email.service';
 
 /**
  * Development-only email service that logs to console.
@@ -40,6 +40,19 @@ export class ConsoleEmailService implements IEmailService {
     console.log('═══════════════════════════════════════════');
     console.log(`Para: ${to}`);
     console.log(`Nome: ${name}`);
+    console.log('═══════════════════════════════════════════');
+  }
+
+  async sendPaymentReferenceEmail(to: string, name: string, data: PaymentEmailData): Promise<void> {
+    console.log('═══════════════════════════════════════════');
+    console.log('EMAIL DE REFERÊNCIA DE PAGAMENTO (Multicaixa Express — Simulação)');
+    console.log('═══════════════════════════════════════════');
+    console.log(`Para: ${to}`);
+    console.log(`Nome: ${name}`);
+    console.log(`Referência: ${data.reference}`);
+    console.log(`Montante: ${data.amount.toLocaleString('pt-AO')} Kz`);
+    console.log(`Validade: ${data.expiresAt.toLocaleString('pt-AO')}`);
+    console.log(`🔑 CÓDIGO DE CONFIRMAÇÃO: ${data.confirmationCode}`);
     console.log('═══════════════════════════════════════════');
   }
 }

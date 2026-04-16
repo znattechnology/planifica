@@ -32,6 +32,8 @@ import { exportPlanToPDF } from '@/src/shared/utils/pdf-export'
 import { exportPlanToWord } from '@/src/shared/utils/word-export'
 import { exportPlanToExcel } from '@/src/shared/utils/excel-export'
 import { AdaptationInsights } from '@/src/ui/components/plans/AdaptationInsights'
+import { useUpgradeGuard } from '@/src/shared/hooks/use-upgrade-guard'
+import { PaymentModal } from '@/src/ui/components/subscription/payment-modal'
 import { PedagogicalTimeline } from '@/src/ui/components/plans/PedagogicalTimeline'
 import { AIExplanationPanel } from '@/src/ui/components/plans/AIExplanationPanel'
 import { AutoAdjustToggle } from '@/src/ui/components/plans/AutoAdjustToggle'
@@ -103,6 +105,7 @@ export default function PlanDetailPage() {
   const [error, setError] = useState<string | null>(null)
 
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const { guard, upgradeModal, closeUpgradeModal } = useUpgradeGuard()
 
   const fetchPlan = useCallback(async () => {
     try {
@@ -335,7 +338,7 @@ export default function PlanDetailPage() {
               size="sm"
               variant="outline"
               className="border-border/60"
-              onClick={() => exportPlanToPDF(plan)}
+              onClick={guard(() => exportPlanToPDF(plan))}
             >
               <Download className="mr-1.5 h-3.5 w-3.5" />
               PDF
@@ -344,7 +347,7 @@ export default function PlanDetailPage() {
               size="sm"
               variant="outline"
               className="border-border/60"
-              onClick={() => exportPlanToWord(plan)}
+              onClick={guard(() => exportPlanToWord(plan))}
             >
               <Download className="mr-1.5 h-3.5 w-3.5" />
               Word
@@ -353,7 +356,7 @@ export default function PlanDetailPage() {
               size="sm"
               variant="outline"
               className="border-border/60"
-              onClick={() => exportPlanToExcel(plan)}
+              onClick={guard(() => exportPlanToExcel(plan))}
             >
               <Download className="mr-1.5 h-3.5 w-3.5" />
               Excel
@@ -370,6 +373,38 @@ export default function PlanDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* GENERATING state */}
+      {plan.status === 'GENERATING' && (
+        <div className="flex items-center gap-3 rounded-xl border border-yellow-500/20 bg-yellow-500/5 p-4">
+          <Loader2 className="h-5 w-5 animate-spin text-yellow-500 shrink-0" />
+          <div>
+            <p className="text-sm font-semibold">A gerar plano com IA...</p>
+            <p className="text-xs text-muted-foreground">Isto pode demorar até 60 segundos. A página actualiza automaticamente.</p>
+          </div>
+        </div>
+      )}
+
+      {/* DRAFT with error — show criticalNotes */}
+      {plan.status === 'DRAFT' && content.criticalNotes && (
+        <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 space-y-2">
+          <div className="flex items-center gap-2">
+            <FileText className="h-4 w-4 text-destructive shrink-0" />
+            <p className="text-sm font-semibold text-destructive">A geração falhou — o plano ficou como rascunho</p>
+          </div>
+          <pre className="text-xs text-muted-foreground whitespace-pre-wrap break-words max-h-40 overflow-y-auto rounded-lg border border-border/40 bg-background/50 p-3">
+            {content.criticalNotes}
+          </pre>
+          <div className="flex gap-2 pt-1">
+            <Button size="sm" className="bg-accent text-accent-foreground hover:bg-accent/90" asChild>
+              <Link href={ROUTES.PLANS_NEW}>
+                <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                Tentar Gerar Novamente
+              </Link>
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Meta info */}
       <div className="grid gap-3 grid-cols-2 sm:grid-cols-4">
@@ -872,6 +907,14 @@ export default function PlanDetailPage() {
             </Link>
           </Button>
         </div>
+      )}
+      {upgradeModal && (
+        <PaymentModal
+          reference={upgradeModal.reference}
+          amount={upgradeModal.amount}
+          expiresAt={upgradeModal.expiresAt}
+          onClose={closeUpgradeModal}
+        />
       )}
     </div>
   )

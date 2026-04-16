@@ -12,6 +12,7 @@ const userSelectWithoutPassword = {
   role: true,
   school: true,
   subject: true,
+  selectedCalendarId: true,
   createdAt: true,
   updatedAt: true,
 } as const;

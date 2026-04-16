@@ -1,7 +1,7 @@
 import { PlanContent, PlanType } from '@/src/domain/entities/plan.entity';
 import { Dosificacao } from '@/src/domain/entities/dosificacao.entity';
 import { AIMessage } from '@/src/ai/types/ai.types';
-import { CalendarContext, SiblingPlanSummary, FocusWeekData } from '@/src/domain/interfaces/services/ai-plan-generator.service';
+import { CalendarContext, SiblingPlanSummary, FocusWeekData, AdjustedWeekInfo } from '@/src/domain/interfaces/services/ai-plan-generator.service';
 
 export interface PlanGenerationContext {
   dosificacao: Dosificacao;
@@ -15,6 +15,7 @@ export interface PlanGenerationContext {
   calendarContext?: CalendarContext;
   siblingPlanSummaries?: SiblingPlanSummary[];
   teachingHistory?: string;
+  adjustedWeekTemplate?: AdjustedWeekInfo[];
 }
 
 export interface IPlanGenerationStrategy {

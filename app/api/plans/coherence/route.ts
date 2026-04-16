@@ -3,7 +3,7 @@ import { container } from '@/src/main/container';
 import { handleApiError } from '@/src/shared/lib/api-response';
 import { getAccessToken } from '@/src/shared/lib/auth-cookies';
 import { PlanCoherenceService } from '@/src/ai/services/plan-coherence.service';
-import type { CalendarContext } from '@/src/domain/interfaces/services/ai-plan-generator.service';
+import { resolveCalendarContextWithMetadata } from '@/src/shared/utils/calendar-context';
 
 /**
  * GET /api/plans/coherence?dosificacaoId=xxx
@@ -45,37 +45,20 @@ export async function GET(request: NextRequest) {
     // Fetch all plans for this dosificação
     const plans = await container.planRepository.findByDosificacaoId(dosificacaoId);
 
-    // Fetch calendar context if available
-    let calendarContext: CalendarContext | undefined;
-    try {
-      const calendar = await container.schoolCalendarRepository.findByUserAndYear(
-        user.id,
-        dosificacao.academicYear,
-      );
-      if (calendar) {
-        calendarContext = {
-          terms: calendar.terms.map(t => ({
-            trimester: t.trimester,
-            startDate: t.startDate.toISOString().split('T')[0],
-            endDate: t.endDate.toISOString().split('T')[0],
-            teachingWeeks: t.teachingWeeks,
-          })),
-          events: calendar.events.map(e => ({
-            title: e.title,
-            startDate: e.startDate.toISOString().split('T')[0],
-            endDate: e.endDate.toISOString().split('T')[0],
-            type: e.type,
-          })),
-        };
-      }
-    } catch {
-      // Proceed without calendar context
-    }
+    // Fetch calendar context with metadata
+    const { calendarContext, calendarInfo, fallbackUsed } = await resolveCalendarContextWithMetadata(
+      user.id, dosificacao.academicYear,
+      container.calendarResolutionService,
+    );
 
     const coherenceService = new PlanCoherenceService();
     const report = coherenceService.analyze(plans, calendarContext);
 
-    return NextResponse.json({ success: true, data: report });
+    return NextResponse.json({
+      success: true,
+      data: report,
+      calendar: calendarInfo ? { ...calendarInfo, fallbackUsed } : undefined,
+    });
   } catch (err) {
     return handleApiError(err);
   }

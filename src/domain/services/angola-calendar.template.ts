@@ -14,6 +14,7 @@
 
 import { CalendarEventType } from '@/src/domain/entities/school-calendar.entity';
 import { CreateCalendarInput } from '@/src/domain/interfaces/repositories/school-calendar.repository';
+import { CalendarType } from '@/src/domain/entities/school-calendar.entity';
 
 // ─── Feriados Nacionais de Angola (datas fixas) ──────────
 
@@ -316,6 +317,8 @@ export function generateAngolaCalendar(
     academicYear,
     country: 'Angola',
     schoolName,
+    type: CalendarType.MINISTERIAL,
+    isActive: true,
     startDate: yearStart,
     endDate: yearEnd,
     terms,

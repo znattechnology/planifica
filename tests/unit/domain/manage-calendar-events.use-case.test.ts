@@ -3,12 +3,17 @@ import { ManageCalendarEventsUseCase } from '@/src/domain/use-cases/calendar/man
 import { CalendarEventType } from '@/src/domain/entities/school-calendar.entity';
 import { ValidationError, UnauthorizedError } from '@/src/domain/errors/domain.error';
 import type { ISchoolCalendarRepository } from '@/src/domain/interfaces/repositories/school-calendar.repository';
+import type { ICacheService } from '@/src/domain/interfaces/services/cache.service';
+import type { ILogger } from '@/src/domain/interfaces/services/logger.service';
 
 const mockCalendar = {
   id: 'cal-1',
   userId: 'user-1',
   academicYear: '2025/2026',
   country: 'Angola',
+  type: 'MINISTERIAL' as const,
+  isActive: true,
+  version: 1,
   startDate: new Date('2025-09-01'),
   endDate: new Date('2026-06-30'),
   terms: [],
@@ -42,18 +47,40 @@ const mockNewEvent = {
 describe('ManageCalendarEventsUseCase', () => {
   let useCase: ManageCalendarEventsUseCase;
   let calendarRepository: ISchoolCalendarRepository;
+  let cache: ICacheService;
+  let logger: ILogger;
 
   beforeEach(() => {
     calendarRepository = {
+      findById: vi.fn().mockResolvedValue(null),
       findByUserAndYear: vi.fn().mockResolvedValue(mockCalendar),
+      findActiveMinisterial: vi.fn().mockResolvedValue(null),
+      findBySchoolAndYear: vi.fn().mockResolvedValue(null),
+      findByType: vi.fn().mockResolvedValue([]),
       findAllByUser: vi.fn(),
       create: vi.fn(),
+      update: vi.fn(),
       delete: vi.fn(),
       addEvent: vi.fn().mockResolvedValue(mockNewEvent),
       removeEvent: vi.fn().mockResolvedValue(undefined),
     };
 
-    useCase = new ManageCalendarEventsUseCase(calendarRepository);
+    cache = {
+      get: vi.fn().mockResolvedValue(null),
+      set: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn().mockResolvedValue(undefined),
+      deleteByPrefix: vi.fn().mockResolvedValue(0),
+      has: vi.fn().mockResolvedValue(false),
+    };
+
+    logger = {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+    };
+
+    useCase = new ManageCalendarEventsUseCase(calendarRepository, cache, logger);
   });
 
   describe('addEvent', () => {
@@ -114,6 +141,17 @@ describe('ManageCalendarEventsUseCase', () => {
         expect.objectContaining({ allDay: true }),
       );
     });
+
+    it('should invalidate cache after adding event', async () => {
+      await useCase.addEvent('user-1', '2025/2026', {
+        title: 'Test',
+        startDate: new Date(),
+        endDate: new Date(),
+        type: CalendarEventType.CUSTOM,
+      });
+
+      expect(cache.deleteByPrefix).toHaveBeenCalledWith('plan:cal-1:');
+    });
   });
 
   describe('removeEvent', () => {
@@ -146,6 +184,12 @@ describe('ManageCalendarEventsUseCase', () => {
       await expect(
         useCase.removeEvent('user-1', '2025/2026', 'nonexistent'),
       ).rejects.toThrow(ValidationError);
+    });
+
+    it('should invalidate cache after removing event', async () => {
+      await useCase.removeEvent('user-1', '2025/2026', 'evt-1');
+
+      expect(cache.deleteByPrefix).toHaveBeenCalledWith('plan:cal-1:');
     });
   });
 });
