@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/src/infrastructure/database/prisma/client';
 import { AuditLog, AuditLogMetadata, CreateAuditLogData } from '@/src/domain/entities/audit-log.entity';
 import { IAuditLogRepository } from '@/src/domain/interfaces/repositories/audit-log.repository';
@@ -34,9 +35,9 @@ export class PrismaAuditLogRepository implements IAuditLogRepository {
         action: data.action,
         entityType: data.entityType,
         entityId: data.entityId,
-        before: data.before,
-        after: data.after,
-        metadata: data.metadata ?? undefined,
+        before: data.before as Prisma.InputJsonValue,
+        after: data.after as Prisma.InputJsonValue,
+        metadata: data.metadata as Prisma.InputJsonValue ?? Prisma.JsonNull,
       },
     });
     return mapAuditLog(raw);

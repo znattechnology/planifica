@@ -257,7 +257,7 @@ export default function SubscriptionPage() {
                   : new Date(sub.endDate).toLocaleDateString('pt-AO')}
               </p>
             </div>
-            {isPremium && daysRemaining !== null && (
+            {isPremium && daysRemaining != null && (
               <div className={cn(
                 'rounded-lg border p-3',
                 daysRemaining <= 7

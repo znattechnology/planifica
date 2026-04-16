@@ -130,7 +130,7 @@ export class LessonPlanStrategy implements IPlanGenerationStrategy {
       const parsed = lessonPlanResponseSchema.parse(JSON.parse(raw));
 
       const summary = parsed.summary
-        || parsed.topics.map((t, i) => `${i + 1}. ${t.title}`).join('\n')
+        || (parsed.topics ?? []).map((t, i) => `${i + 1}. ${t.title}`).join('\n')
         || '';
 
       const didacticUnit = parsed.didacticUnit || parsed.topic || '';
