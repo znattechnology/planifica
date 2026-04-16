@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
 
     const result = await prisma.plan.updateMany({
       where: {
-        id: { in: stuckPlans.map(p => p.id) },
+        id: { in: stuckPlans.map((p: { id: string }) => p.id) },
         status: 'GENERATING',
       },
       data: {
