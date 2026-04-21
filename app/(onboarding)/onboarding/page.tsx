@@ -29,6 +29,7 @@ import { Select } from '@/src/ui/components/ui/select'
 import { FormAlert } from '@/src/ui/components/ui/form-error'
 import { API_ROUTES, ROUTES } from '@/src/shared/constants/routes.constants'
 import { useAuth } from '@/src/ui/providers/auth-provider'
+import { getCurrentAcademicYear, getAcademicYearOptions } from '@/src/shared/utils/academic-year'
 
 // ─── Constants ───────────────────────────────────────────
 
@@ -82,14 +83,6 @@ const INTELLIGENCE_FEATURES = [
   },
 ]
 
-function getCurrentAcademicYear(): string {
-  const now = new Date()
-  const year = now.getFullYear()
-  if (now.getMonth() < 1) {
-    return `${year - 1}/${year}`
-  }
-  return `${year}/${year + 1}`
-}
 
 // ─── Steps ───────────────────────────────────────────────
 
@@ -369,12 +362,15 @@ export default function OnboardingPage() {
 
           <div className="space-y-2">
             <Label htmlFor="academicYear">Ano lectivo *</Label>
-            <Input
+            <Select
               id="academicYear"
-              placeholder="Ex: 2026/2027"
               value={data.academicYear}
               onChange={e => updateData({ academicYear: e.target.value })}
-            />
+            >
+              {getAcademicYearOptions().map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </Select>
           </div>
         </div>
       </div>

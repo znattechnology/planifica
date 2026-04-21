@@ -20,6 +20,7 @@ import { Badge } from '@/src/ui/components/ui/badge'
 import { Button } from '@/src/ui/components/ui/button'
 import { Input } from '@/src/ui/components/ui/input'
 import { ROUTES, API_ROUTES } from '@/src/shared/constants/routes.constants'
+import { getCurrentAcademicYear, getAcademicYearOptions } from '@/src/shared/utils/academic-year'
 
 interface CalendarTerm {
   trimester: number
@@ -70,11 +71,7 @@ export default function AdminCalendarsPage() {
   const [error, setError] = useState<string | null>(null)
 
   // Create form state — default to current academic year (Angola: Sep–Jul)
-  const currentYear = new Date().getFullYear()
-  const defaultAcademicYear = new Date().getMonth() >= 8
-    ? `${currentYear}/${currentYear + 1}`
-    : `${currentYear - 1}/${currentYear}`
-  const [newAcademicYear, setNewAcademicYear] = useState(defaultAcademicYear)
+  const [newAcademicYear, setNewAcademicYear] = useState(getCurrentAcademicYear)
   const [newSchoolName, setNewSchoolName] = useState('')
   const [newType, setNewType] = useState<'MINISTERIAL' | 'SCHOOL'>('SCHOOL')
 
@@ -186,11 +183,15 @@ export default function AdminCalendarsPage() {
           <div className="grid gap-4 sm:grid-cols-3">
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">Ano Lectivo</label>
-              <Input
+              <select
                 value={newAcademicYear}
                 onChange={e => setNewAcademicYear(e.target.value)}
-                placeholder="2025/2026"
-              />
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                {getAcademicYearOptions().map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">Tipo</label>
