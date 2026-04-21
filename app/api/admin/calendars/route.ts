@@ -117,6 +117,14 @@ export async function POST(request: Request) {
       );
     }
 
+    // Validate year format YYYY/YYYY
+    if (!/^\d{4}\/\d{4}$/.test(academicYear)) {
+      return NextResponse.json(
+        { success: false, error: { code: 'VALIDATION_ERROR', message: 'Formato do ano letivo inválido. Use YYYY/YYYY (ex: 2026/2027)' } },
+        { status: 422 },
+      );
+    }
+
     const calendarType = type === 'MINISTERIAL' ? CalendarType.MINISTERIAL : CalendarType.SCHOOL;
 
     // SCHOOL calendars require a schoolName

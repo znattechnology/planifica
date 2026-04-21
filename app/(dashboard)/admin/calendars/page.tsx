@@ -69,8 +69,12 @@ export default function AdminCalendarsPage() {
   const [toggling, setToggling] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  // Create form state
-  const [newAcademicYear, setNewAcademicYear] = useState('2025/2026')
+  // Create form state — default to current academic year (Angola: Sep–Jul)
+  const currentYear = new Date().getFullYear()
+  const defaultAcademicYear = new Date().getMonth() >= 8
+    ? `${currentYear}/${currentYear + 1}`
+    : `${currentYear - 1}/${currentYear}`
+  const [newAcademicYear, setNewAcademicYear] = useState(defaultAcademicYear)
   const [newSchoolName, setNewSchoolName] = useState('')
   const [newType, setNewType] = useState<'MINISTERIAL' | 'SCHOOL'>('SCHOOL')
 

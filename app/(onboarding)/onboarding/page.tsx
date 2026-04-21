@@ -692,10 +692,14 @@ export default function OnboardingPage() {
             A carregar calendários disponíveis...
           </motion.div>
         ) : calendarOptions.length === 0 ? (
-          <motion.div variants={staggerItem} className="rounded-xl border border-border/60 bg-card p-6 text-center">
-            <CalendarDays className="mx-auto h-8 w-8 text-muted-foreground mb-3" />
-            <p className="text-sm text-muted-foreground">
-              Será criado automaticamente o calendário ministerial de {data.country} para {data.academicYear}.
+          <motion.div variants={staggerItem} className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 p-6 text-center">
+            <CalendarDays className="mx-auto h-8 w-8 text-yellow-500 mb-3" />
+            <p className="text-sm font-medium text-yellow-600 dark:text-yellow-400 mb-1">
+              Nenhum calendário disponível para {data.academicYear}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              O administrador do sistema ainda não criou um calendário para este ano letivo.
+              Poderá selecionar um calendário mais tarde nas definições.
             </p>
           </motion.div>
         ) : (
