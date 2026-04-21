@@ -51,7 +51,8 @@ describe('PlanPromptBuilder', () => {
     });
 
     expect(messages[1].content).toContain('Subject: Matemática');
-    expect(messages[1].content).toContain('Grade: 10ª Classe');
+    // NFKC normalization in sanitizePromptInput converts ª → a
+    expect(messages[1].content).toContain('Grade: 10a Classe');
   });
 
   it('should include dosificacao content in user prompt', () => {

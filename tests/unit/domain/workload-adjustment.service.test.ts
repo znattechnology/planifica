@@ -77,9 +77,14 @@ describe('WorkloadAdjustmentService', () => {
     const result = service.adjustForTrimester(context, 1, 4);
     expect(result).not.toBeNull();
 
+    // The service marks the week BEFORE the exam as review, not the exam week itself
+    const reviewWeek = result!.weeks.find(w => w.weekStart === '2025-11-10');
+    expect(reviewWeek).toBeDefined();
+    expect(reviewWeek!.isReviewWeek).toBe(true);
+    // The exam week itself is marked as isExamWeek
     const examWeek = result!.weeks.find(w => w.weekStart === '2025-11-17');
     expect(examWeek).toBeDefined();
-    expect(examWeek!.isReviewWeek).toBe(true);
+    expect(examWeek!.isExamWeek).toBe(true);
   });
 
   it('should return null when trimester is not found', () => {

@@ -191,7 +191,7 @@ describe('PlanQualityService', () => {
     const report = service.evaluate(plan, [], parent);
 
     expect(report.insights.some(i =>
-      i.type === 'warning' && i.message.includes('não encontrado(s) no plano pai'),
+      i.type === 'warning' && i.message.includes('fora do plano pai'),
     )).toBe(true);
   });
 
